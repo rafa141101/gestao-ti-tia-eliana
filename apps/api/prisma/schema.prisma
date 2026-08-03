@@ -1,0 +1,1076 @@
+// ============================================================
+// Gestão TI — Tia Eliana — Modelo de dados
+// PostgreSQL + Prisma. Nada operacional é apagado fisicamente:
+// usa-se soft delete (active=false), cancelamento ou estorno.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  OWNER
+  ADMIN
+  GESTOR_TI
+  TECNICO
+  SOLICITANTE
+  GESTOR_SETOR
+  AUDITOR
+  INVENTARIANTE
+}
+
+enum TicketStatus {
+  NOVO
+  TRIAGEM
+  ATRIBUIDO
+  EM_ATENDIMENTO
+  AGUARDANDO_SOLICITANTE
+  AGUARDANDO_TERCEIRO
+  AGUARDANDO_APROVACAO
+  AGENDADO
+  PAUSADO_DEPENDENCIA
+  RESOLVIDO
+  FECHADO
+  CANCELADO
+}
+
+enum Priority {
+  P1
+  P2
+  P3
+  P4
+}
+
+enum Impact {
+  UMA_PESSOA
+  ALGUMAS_PESSOAS
+  UM_SETOR
+  UMA_UNIDADE
+  VARIAS_UNIDADES
+  TODA_EMPRESA
+}
+
+enum Urgency {
+  EXISTE_ALTERNATIVA
+  PARCIALMENTE_PREJUDICADA
+  ATIVIDADE_BLOQUEADA
+  OPERACAO_PARADA
+  RISCO_IMEDIATO
+}
+
+enum Channel {
+  PORTAL
+  WHATSAPP
+  EMAIL
+  TELEFONE
+  PRESENCIAL
+  SISTEMA
+  QR_CODE
+  MONITORAMENTO
+  TECNICO
+}
+
+enum WorklogType {
+  ATENDIMENTO_REMOTO
+  ATENDIMENTO_PRESENCIAL
+  DIAGNOSTICO
+  MANUTENCAO
+  CONFIGURACAO
+  DESENVOLVIMENTO
+  ANALISE
+  REUNIAO
+  DESLOCAMENTO
+  CONTATO_TERCEIRO
+  DOCUMENTACAO
+  TREINAMENTO
+  TESTE
+  ACOMPANHAMENTO
+}
+
+enum TicketEventType {
+  CRIACAO
+  STATUS
+  PRIORIDADE
+  ATRIBUICAO
+  FILA
+  PRIMEIRA_RESPOSTA
+  RESOLUCAO
+  REABERTURA
+  FECHAMENTO
+  CANCELAMENTO
+  VINCULO
+  SLA
+  INTERRUPCAO
+  EDICAO
+}
+
+enum ProjectStatus {
+  PROPOSTO
+  EM_ANALISE
+  APROVADO
+  PLANEJADO
+  EM_EXECUCAO
+  EM_HOMOLOGACAO
+  BLOQUEADO
+  CONCLUIDO
+  CANCELADO
+}
+
+enum TaskStatus {
+  A_FAZER
+  EM_ANDAMENTO
+  BLOQUEADA
+  CONCLUIDA
+  CANCELADA
+}
+
+enum RoutineFrequency {
+  DIARIA
+  SEMANAL
+  QUINZENAL
+  MENSAL
+  TRIMESTRAL
+  ANUAL
+  PERSONALIZADA
+}
+
+enum RoutineExecStatus {
+  PENDENTE
+  EM_EXECUCAO
+  CONCLUIDA
+  ATRASADA
+  PULADA
+}
+
+enum Criticality {
+  BAIXA
+  MEDIA
+  ALTA
+}
+
+enum AssetStatus {
+  EM_USO
+  DISPONIVEL
+  RESERVA
+  EMPRESTADO
+  EM_MANUTENCAO
+  AGUARDANDO_PECA
+  EM_TRANSFERENCIA
+  AGUARDANDO_DESCARTE
+  DESCARTADO
+  EXTRAVIADO
+  INATIVO
+}
+
+enum AssetKind {
+  ATIVO_INDIVIDUAL
+  COMPONENTE
+  CONSUMIVEL
+  KIT
+}
+
+enum ComponentStatus {
+  INSTALADO
+  REMOVIDO
+  ESTOQUE
+  DESCARTADO
+}
+
+enum MovementType {
+  TRANSFERENCIA_UNIDADE
+  TRANSFERENCIA_SETOR
+  TROCA_USUARIO
+  ENVIO_MANUTENCAO
+  RETORNO_MANUTENCAO
+  EMPRESTIMO
+  DEVOLUCAO
+  ENVIO_DESCARTE
+  RETIRADA_RESERVA
+  RETORNO_RESERVA
+}
+
+enum MovementStatus {
+  SOLICITADA
+  SEPARADA
+  RETIRADA
+  EM_TRANSPORTE
+  RECEBIDA
+  CONFIRMADA
+  CANCELADA
+  RETORNADA
+}
+
+enum MaintenanceType {
+  PREVENTIVA
+  CORRETIVA
+  LIMPEZA
+  INSPECAO
+  ATUALIZACAO
+  SUBSTITUICAO
+  CONFIGURACAO
+  REVISAO
+  TESTE
+  INSTALACAO
+}
+
+enum SlaMode {
+  CORRIDO
+  COMERCIAL
+}
+
+enum TicketRelationType {
+  RELACIONADO
+  PAI
+  FILHO
+  DUPLICADO
+}
+
+// ---------- Estrutura organizacional ----------
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  tradeName String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  units     Unit[]
+
+  @@map("organizations")
+}
+
+model Unit {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  code           String?
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  departments Department[]
+  users       User[]
+  tickets     Ticket[]
+  assets      Asset[]
+  routines    Routine[]
+  movementsFrom AssetMovement[] @relation("MovementFromUnit")
+  movementsTo   AssetMovement[] @relation("MovementToUnit")
+
+  @@map("units")
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  unitId    String?
+  unit      Unit?    @relation(fields: [unitId], references: [id])
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users    User[]
+  tickets  Ticket[]
+  assets   Asset[]
+  routines Routine[]
+  movementsFrom AssetMovement[] @relation("MovementFromDept")
+  movementsTo   AssetMovement[] @relation("MovementToDept")
+
+  @@map("departments")
+}
+
+// ---------- Usuários ----------
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(SOLICITANTE)
+  phone        String?
+  unitId       String?
+  unit         Unit?    @relation(fields: [unitId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  active       Boolean  @default(true)
+  /// Proteção do Owner: usuários protegidos não podem ser rebaixados/inativados por não-Owner
+  isProtected  Boolean  @default(false)
+  failedLogins Int      @default(0)
+  lockedUntil  DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ticketsRequested   Ticket[] @relation("TicketRequester")
+  ticketsAssigned    Ticket[] @relation("TicketAssignee")
+  ticketsApprover    Ticket[] @relation("TicketApprover")
+  ticketEvents       TicketEvent[]
+  comments           TicketComment[]
+  worklogs           Worklog[] @relation("WorklogUser")
+  worklogsEdited     Worklog[] @relation("WorklogEditor")
+  attachments        Attachment[]
+  projectsOwned      Project[] @relation("ProjectOwner")
+  projectsRequested  Project[] @relation("ProjectRequester")
+  projectsSponsored  Project[] @relation("ProjectSponsor")
+  projectMemberships ProjectMember[]
+  tasksAssigned      ProjectTask[]
+  routinesOwned      Routine[] @relation("RoutineAssignee")
+  routinesSubstitute Routine[] @relation("RoutineSubstitute")
+  routineExecutions  RoutineExecution[]
+  assetsInUse        Asset[]  @relation("AssetUser")
+  assetsCustodian    Asset[]  @relation("AssetCustodian")
+  assetsCreated      Asset[]  @relation("AssetCreator")
+  movementsRequested AssetMovement[] @relation("MovementRequester")
+  movementsSent      AssetMovement[] @relation("MovementSender")
+  movementsReceived  AssetMovement[] @relation("MovementReceiver")
+  maintenances       MaintenanceRecord[] @relation("MaintenanceResponsible")
+  maintenancesCreated MaintenanceRecord[] @relation("MaintenanceCreator")
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  watching           TicketWatcher[]
+  queueMemberships   QueueMember[]
+
+  @@map("users")
+}
+
+// ---------- Filas e categorias ----------
+
+enum AssignmentMode {
+  MANUAL
+  ROUND_ROBIN
+}
+
+model Queue {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  /// Distribuição automática: ROUND_ROBIN atribui novos chamados aos membros em rodízio
+  assignmentMode     AssignmentMode @default(MANUAL)
+  lastAssignedUserId String?
+  active      Boolean @default(true)
+  tickets     Ticket[]
+  members     QueueMember[]
+
+  @@map("queues")
+}
+
+model QueueMember {
+  queueId String
+  queue   Queue  @relation(fields: [queueId], references: [id])
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+
+  @@id([queueId, userId])
+  @@map("queue_members")
+}
+
+model Category {
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  defaultQueueId   String?
+  defaultPriority  Priority?
+  slaPolicyId      String?
+  slaPolicy        SlaPolicy? @relation(fields: [slaPolicyId], references: [id])
+  /// Formulário condicional da categoria (JSON: [{id,label,type,options?,required?}])
+  formSchema       Json?
+  responseTemplate String?
+  checklist        Json?
+  requiresApproval Boolean  @default(false)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  subcategories Subcategory[]
+  tickets       Ticket[]
+
+  @@map("categories")
+}
+
+model Subcategory {
+  id         String   @id @default(uuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  name       String
+  active     Boolean  @default(true)
+
+  tickets Ticket[]
+
+  @@map("subcategories")
+}
+
+// ---------- SLA ----------
+
+model SlaPolicy {
+  id            String  @id @default(uuid())
+  name          String
+  mode          SlaMode @default(COMERCIAL)
+  /// Horário comercial "HH:mm"
+  businessStart String  @default("08:00")
+  businessEnd   String  @default("18:00")
+  /// Dias úteis: 1=segunda ... 7=domingo, separado por vírgula
+  workdays      String  @default("1,2,3,4,5")
+  /// Minutos para primeira resposta por prioridade
+  firstResponseP1 Int @default(10)
+  firstResponseP2 Int @default(30)
+  firstResponseP3 Int @default(240)
+  firstResponseP4 Int @default(600)
+  /// Minutos para resolução por prioridade
+  resolutionP1 Int @default(240)
+  resolutionP2 Int @default(480)
+  resolutionP3 Int @default(2400)
+  resolutionP4 Int @default(12000)
+  isDefault    Boolean @default(false)
+  active       Boolean @default(true)
+  createdAt    DateTime @default(now())
+
+  categories Category[]
+  tickets    Ticket[]
+
+  @@map("sla_policies")
+}
+
+model Holiday {
+  id   String   @id @default(uuid())
+  date DateTime @db.Date
+  name String
+
+  @@map("holidays")
+}
+
+// ---------- Chamados ----------
+
+model Ticket {
+  id       String @id @default(uuid())
+  /// Número legível TI-AAAA-NNNNNN, gerado de forma segura em concorrência
+  number   String @unique
+  title    String
+  description String
+
+  requesterId String
+  requester   User   @relation("TicketRequester", fields: [requesterId], references: [id])
+  unitId      String?
+  unit        Unit?  @relation(fields: [unitId], references: [id])
+  departmentId String?
+  department  Department? @relation(fields: [departmentId], references: [id])
+
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id])
+  subcategoryId String?
+  subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id])
+  channel       Channel  @default(PORTAL)
+
+  impact             Impact
+  urgency            Urgency
+  calculatedPriority Priority
+  priority           Priority
+  priorityJustification String?
+
+  assigneeId String?
+  assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  queueId    String?
+  queue      Queue?  @relation(fields: [queueId], references: [id])
+
+  assetId      String?
+  asset        Asset?      @relation(fields: [assetId], references: [id])
+  projectId    String?
+  project      Project?    @relation(fields: [projectId], references: [id])
+  thirdPartyId String?
+  thirdParty   ThirdParty? @relation(fields: [thirdPartyId], references: [id])
+  /// Ticket do fornecedor/terceiro
+  externalTicketNumber String?
+  vendorForecastAt     DateTime?
+  vendorLastReplyAt    DateTime?
+
+  /// Telefone de contato (chamados via WhatsApp de números não cadastrados)
+  contactPhone String?
+
+  status TicketStatus @default(NOVO)
+
+  /// Respostas do formulário condicional da categoria
+  formResponses Json?
+  tags          String[] @default([])
+
+  /// Área de negócio responsável pela informação (regra 21.17)
+  infoOwnerArea String?
+  approverId    String?
+  approver      User?   @relation("TicketApprover", fields: [approverId], references: [id])
+
+  slaPolicyId        String?
+  slaPolicy          SlaPolicy? @relation(fields: [slaPolicyId], references: [id])
+  firstResponseDueAt DateTime?
+  resolutionDueAt    DateTime?
+  /// Pausa de SLA: quando entrou em status de espera
+  slaPausedAt        DateTime?
+  /// Total de minutos que o SLA ficou pausado
+  slaPausedMinutes   Int @default(0)
+
+  openedAt        DateTime  @default(now())
+  triagedAt       DateTime?
+  assignedAt      DateTime?
+  firstResponseAt DateTime?
+  startedAt       DateTime?
+  scheduledFor    DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  reopenedCount   Int       @default(0)
+
+  resolutionNotes String?
+  cancelReason    String?
+  nextStep        String?
+  returnForecast  DateTime?
+
+  rating        Int?
+  ratingComment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events      TicketEvent[]
+  comments    TicketComment[]
+  attachments Attachment[]
+  worklogs    Worklog[]
+  watchers    TicketWatcher[]
+  relations   TicketRelation[] @relation("TicketRelationSource")
+  relatedBy   TicketRelation[] @relation("TicketRelationTarget")
+  maintenances MaintenanceRecord[]
+
+  @@index([status])
+  @@index([assigneeId])
+  @@index([requesterId])
+  @@index([categoryId])
+  @@index([unitId])
+  @@index([priority])
+  @@index([openedAt])
+  @@map("tickets")
+}
+
+/// Histórico imutável de eventos do chamado (status, prioridade, atribuição, SLA...)
+model TicketEvent {
+  id        String          @id @default(uuid())
+  ticketId  String
+  ticket    Ticket          @relation(fields: [ticketId], references: [id])
+  userId    String?
+  user      User?           @relation(fields: [userId], references: [id])
+  type      TicketEventType
+  fromValue String?
+  toValue   String?
+  comment   String?
+  justification String?
+  createdAt DateTime        @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_events")
+}
+
+model TicketComment {
+  id         String   @id @default(uuid())
+  ticketId   String
+  ticket     Ticket   @relation(fields: [ticketId], references: [id])
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  body       String
+  /// Comentários internos não são visíveis ao solicitante
+  isInternal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  attachments Attachment[]
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_comments")
+}
+
+model TicketWatcher {
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+  userId   String
+  user     User   @relation(fields: [userId], references: [id])
+
+  @@id([ticketId, userId])
+  @@map("ticket_watchers")
+}
+
+model TicketRelation {
+  id              String             @id @default(uuid())
+  ticketId        String
+  ticket          Ticket             @relation("TicketRelationSource", fields: [ticketId], references: [id])
+  relatedTicketId String
+  relatedTicket   Ticket             @relation("TicketRelationTarget", fields: [relatedTicketId], references: [id])
+  relation        TicketRelationType @default(RELACIONADO)
+  createdAt       DateTime           @default(now())
+
+  @@unique([ticketId, relatedTicketId, relation])
+  @@map("ticket_relations")
+}
+
+// ---------- Apontamento de tempo ----------
+
+/// Registro de tempo trabalhado — vinculável a chamado, tarefa de projeto,
+/// execução de rotina ou manutenção. Nunca excluído: estorno via active=false.
+model Worklog {
+  id     String      @id @default(uuid())
+  userId String
+  user   User        @relation("WorklogUser", fields: [userId], references: [id])
+  type   WorklogType
+
+  ticketId           String?
+  ticket             Ticket?           @relation(fields: [ticketId], references: [id])
+  taskId             String?
+  task               ProjectTask?      @relation(fields: [taskId], references: [id])
+  routineExecutionId String?
+  routineExecution   RoutineExecution? @relation(fields: [routineExecutionId], references: [id])
+  maintenanceId      String?
+  maintenance        MaintenanceRecord? @relation(fields: [maintenanceId], references: [id])
+
+  description     String?
+  result          String?
+  nextStep        String?
+  startedAt       DateTime
+  endedAt         DateTime?
+  durationMinutes Int?
+  isManual        Boolean  @default(false)
+
+  editJustification String?
+  editedById        String?
+  editedBy          User?    @relation("WorklogEditor", fields: [editedById], references: [id])
+  editedAt          DateTime?
+
+  /// Estorno lógico (nunca apagar)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId, startedAt])
+  @@index([ticketId])
+  @@map("ticket_worklogs")
+}
+
+// ---------- Anexos ----------
+
+model Attachment {
+  id           String   @id @default(uuid())
+  filename     String
+  storedName   String   @unique
+  mimeType     String
+  size         Int
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+
+  ticketId  String?
+  ticket    Ticket?        @relation(fields: [ticketId], references: [id])
+  commentId String?
+  comment   TicketComment? @relation(fields: [commentId], references: [id])
+  taskId    String?
+  task      ProjectTask?   @relation(fields: [taskId], references: [id])
+  assetId   String?
+  asset     Asset?         @relation(fields: [assetId], references: [id])
+  maintenanceId String?
+  maintenance   MaintenanceRecord? @relation(fields: [maintenanceId], references: [id])
+  movementId    String?
+  movement      AssetMovement?     @relation(fields: [movementId], references: [id])
+  routineExecutionId String?
+  routineExecution   RoutineExecution? @relation(fields: [routineExecutionId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("attachments")
+}
+
+// ---------- Terceiros ----------
+
+model ThirdParty {
+  id           String  @id @default(uuid())
+  name         String
+  serviceType  String?
+  contactName  String?
+  email        String?
+  phone        String?
+  contract     String?
+  slaInfo      String?
+  serviceHours String?
+  systems      String?
+  notes        String?
+  active       Boolean @default(true)
+  createdAt    DateTime @default(now())
+
+  tickets      Ticket[]
+  maintenances MaintenanceRecord[]
+  assetsSupplied Asset[]
+
+  @@map("third_parties")
+}
+
+// ---------- Projetos ----------
+
+model Project {
+  id            String        @id @default(uuid())
+  name          String
+  objective     String?
+  justification String?
+  status        ProjectStatus @default(PROPOSTO)
+  priority      Priority      @default(P4)
+
+  requesterId String?
+  requester   User?   @relation("ProjectRequester", fields: [requesterId], references: [id])
+  sponsorId   String?
+  sponsor     User?   @relation("ProjectSponsor", fields: [sponsorId], references: [id])
+  ownerId     String?
+  owner       User?   @relation("ProjectOwner", fields: [ownerId], references: [id])
+
+  startDate       DateTime?
+  dueDate         DateTime?
+  percentComplete Int       @default(0)
+  estimatedHours  Float?
+
+  blocks       String?
+  risks        String?
+  dependencies String?
+  infoOwnerArea String?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members ProjectMember[]
+  tasks   ProjectTask[]
+  tickets Ticket[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  roleInProject String?
+
+  @@id([projectId, userId])
+  @@map("project_members")
+}
+
+model ProjectTask {
+  id          String     @id @default(uuid())
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id])
+  title       String
+  description String?
+  status      TaskStatus @default(A_FAZER)
+  assigneeId  String?
+  assignee    User?      @relation(fields: [assigneeId], references: [id])
+  dueDate     DateTime?
+  estimatedHours Float?
+  sortOrder   Int        @default(0)
+  active      Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  worklogs    Worklog[]
+  attachments Attachment[]
+
+  @@index([projectId, status])
+  @@map("project_tasks")
+}
+
+// ---------- Rotinas ----------
+
+model Routine {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  frequency   RoutineFrequency
+  /// Para PERSONALIZADA: intervalo em dias
+  intervalDays Int?
+  assigneeId  String
+  assignee    User             @relation("RoutineAssignee", fields: [assigneeId], references: [id])
+  substituteId String?
+  substitute  User?            @relation("RoutineSubstitute", fields: [substituteId], references: [id])
+  unitId      String?
+  unit        Unit?            @relation(fields: [unitId], references: [id])
+  departmentId String?
+  department  Department?      @relation(fields: [departmentId], references: [id])
+  /// Checklist JSON: [{id, label}]
+  checklist   Json?
+  requiresEvidence Boolean     @default(false)
+  estimatedMinutes Int?
+  criticality Criticality      @default(MEDIA)
+  nextRunAt   DateTime
+  toleranceHours Int           @default(24)
+  instructions String?
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  executions RoutineExecution[]
+
+  @@map("routines")
+}
+
+/// Cada execução é um registro individual e imutável após conclusão.
+model RoutineExecution {
+  id           String            @id @default(uuid())
+  routineId    String
+  routine      Routine           @relation(fields: [routineId], references: [id])
+  scheduledFor DateTime
+  status       RoutineExecStatus @default(PENDENTE)
+  executedById String?
+  executedBy   User?             @relation(fields: [executedById], references: [id])
+  startedAt    DateTime?
+  completedAt  DateTime?
+  /// Resultados do checklist: [{id, label, done, note?}]
+  checklistResults Json?
+  notes        String?
+  createdAt    DateTime          @default(now())
+
+  worklogs    Worklog[]
+  attachments Attachment[]
+
+  @@unique([routineId, scheduledFor])
+  @@index([routineId, scheduledFor])
+  @@map("routine_executions")
+}
+
+// ---------- Inventário ----------
+
+model AssetCategory {
+  id     String  @id @default(uuid())
+  name   String
+  active Boolean @default(true)
+
+  assets Asset[]
+
+  @@map("asset_categories")
+}
+
+model Asset {
+  id       String @id @default(uuid())
+  /// Código automático ATI-AAAA-NNNNNN
+  code     String @unique
+  /// Identificador público curto para QR Code (sem dados sensíveis)
+  publicId String @unique
+  /// Código patrimonial físico já existente (plaquinha)
+  patrimonyCode String?
+
+  categoryId String
+  category   AssetCategory @relation(fields: [categoryId], references: [id])
+  family     String?
+  kind       AssetKind     @default(ATIVO_INDIVIDUAL)
+  description String
+  brand       String?
+  model       String?
+  serialNumber String?
+
+  unitId       String?
+  unit         Unit?       @relation(fields: [unitId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  location     String?
+  userId       String?
+  user         User?       @relation("AssetUser", fields: [userId], references: [id])
+  custodianId  String?
+  custodian    User?       @relation("AssetCustodian", fields: [custodianId], references: [id])
+
+  status      AssetStatus @default(DISPONIVEL)
+  criticality Criticality @default(MEDIA)
+
+  purchaseDate  DateTime?
+  purchaseValue Decimal?  @db.Decimal(12, 2)
+  supplierId    String?
+  supplier      ThirdParty? @relation(fields: [supplierId], references: [id])
+  invoiceNumber String?
+  warrantyStart DateTime?
+  warrantyEnd   DateTime?
+
+  ip       String?
+  mac      String?
+  os       String?
+  hostname String?
+  /// Configuração técnica adicional (JSON livre)
+  specs    Json?
+
+  /// Para consumíveis/kits: quantidade e estoque mínimo
+  quantity Int  @default(1)
+  minStock Int?
+
+  nextMaintenanceAt DateTime?
+  notes       String?
+  active      Boolean  @default(true)
+  createdById String?
+  createdBy   User?    @relation("AssetCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  components   AssetComponent[]
+  movements    AssetMovement[]
+  maintenances MaintenanceRecord[]
+  tickets      Ticket[]
+  attachments  Attachment[]
+
+  @@index([status])
+  @@index([unitId])
+  @@index([categoryId])
+  @@map("assets")
+}
+
+/// Componentes de um ativo (memória, SSD, fonte...). Histórico preservado:
+/// substituição marca removedAt + status, nunca apaga.
+model AssetComponent {
+  id       String @id @default(uuid())
+  assetId  String
+  asset    Asset  @relation(fields: [assetId], references: [id])
+  type     String
+  brand    String?
+  model    String?
+  serialNumber String?
+  capacity String?
+  installedAt DateTime?
+  removedAt   DateTime?
+  warrantyEnd DateTime?
+  supplier    String?
+  cost        Decimal? @db.Decimal(12, 2)
+  status      ComponentStatus @default(INSTALADO)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([assetId])
+  @@map("asset_components")
+}
+
+model AssetMovement {
+  id      String         @id @default(uuid())
+  assetId String
+  asset   Asset          @relation(fields: [assetId], references: [id])
+  type    MovementType
+  status  MovementStatus @default(SOLICITADA)
+
+  fromUnitId String?
+  fromUnit   Unit?   @relation("MovementFromUnit", fields: [fromUnitId], references: [id])
+  toUnitId   String?
+  toUnit     Unit?   @relation("MovementToUnit", fields: [toUnitId], references: [id])
+  fromDepartmentId String?
+  fromDepartment   Department? @relation("MovementFromDept", fields: [fromDepartmentId], references: [id])
+  toDepartmentId   String?
+  toDepartment     Department? @relation("MovementToDept", fields: [toDepartmentId], references: [id])
+  fromUserId String?
+  toUserId   String?
+
+  requestedById String
+  requestedBy   User   @relation("MovementRequester", fields: [requestedById], references: [id])
+  sentById      String?
+  sentBy        User?  @relation("MovementSender", fields: [sentById], references: [id])
+  receivedById  String?
+  receivedBy    User?  @relation("MovementReceiver", fields: [receivedById], references: [id])
+
+  reason             String?
+  notes              String?
+  equipmentCondition String?
+  confirmedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  attachments Attachment[]
+
+  @@index([assetId, createdAt])
+  @@map("asset_movements")
+}
+
+model MaintenanceRecord {
+  id       String          @id @default(uuid())
+  assetId  String
+  asset    Asset           @relation(fields: [assetId], references: [id])
+  ticketId String?
+  ticket   Ticket?         @relation(fields: [ticketId], references: [id])
+  type     MaintenanceType
+  description String
+  diagnosis   String?
+  serviceDone String?
+
+  responsibleId String?
+  responsible   User?       @relation("MaintenanceResponsible", fields: [responsibleId], references: [id])
+  thirdPartyId  String?
+  thirdParty    ThirdParty? @relation(fields: [thirdPartyId], references: [id])
+
+  date            DateTime  @default(now())
+  durationMinutes Int?
+  partsUsed       String?
+  cost            Decimal?  @db.Decimal(12, 2)
+  result          String?
+  /// Equipamento voltou a operar?
+  operational     Boolean?
+  nextMaintenanceAt DateTime?
+  notes           String?
+
+  createdById String
+  createdBy   User   @relation("MaintenanceCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  worklogs    Worklog[]
+  attachments Attachment[]
+
+  @@index([assetId, date])
+  @@map("maintenance_records")
+}
+
+// ---------- Notificações ----------
+
+model Notification {
+  id       String  @id @default(uuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id])
+  type     String
+  title    String
+  body     String?
+  entity   String?
+  entityId String?
+  readAt   DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// ---------- Auditoria ----------
+
+/// Log de auditoria imutável — protegido também por trigger no banco
+/// (impede UPDATE e DELETE, ver migration).
+model AuditLog {
+  id       String  @id @default(uuid())
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id])
+  action   String
+  entity   String
+  entityId String?
+  before   Json?
+  after    Json?
+  justification String?
+  ip        String?
+  userAgent String?
+  origin    String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ---------- Configurações e contadores ----------
+
+model SystemSetting {
+  key   String @id
+  value Json
+
+  @@map("system_settings")
+}
+
+/// Contador para numeração legível (TI-AAAA-NNNNNN / ATI-AAAA-NNNNNN).
+/// Incrementado com SELECT ... FOR UPDATE dentro de transação — seguro em concorrência.
+model Counter {
+  scope String
+  year  Int
+  next  Int    @default(1)
+
+  @@id([scope, year])
+  @@map("counters")
+}

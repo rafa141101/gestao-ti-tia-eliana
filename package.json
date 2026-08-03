@@ -1,0 +1,23 @@
+{
+  "name": "gestao-ti",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gestão TI — Tia Eliana: chamados, trabalho da equipe, projetos, rotinas e inventário de TI",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @gestao-ti/shared && npm run build -w @gestao-ti/api && npm run build -w @gestao-ti/web",
+    "build:shared": "npm run build -w @gestao-ti/shared",
+    "dev:api": "npm run dev -w @gestao-ti/api",
+    "dev:web": "npm run dev -w @gestao-ti/web",
+    "db:migrate": "npm run db:migrate -w @gestao-ti/api",
+    "db:deploy": "npm run db:deploy -w @gestao-ti/api",
+    "db:seed": "npm run db:seed -w @gestao-ti/api",
+    "test": "npm run test -w @gestao-ti/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

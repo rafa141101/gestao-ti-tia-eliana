@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.production
+*.local
+uploads/
+uploads-test/
+backups/*.dump
+backups/*.tar.gz
+coverage/
+.DS_Store
+Thumbs.db
+*.log
+.claude/

@@ -1,0 +1,450 @@
+{
+  "computers": [
+    {
+      "numero": 1151,
+      "local": "Logística",
+      "ip": "192.168.0.221",
+      "modo_ip": "Estático",
+      "tipo": "Notebook",
+      "processador": "Intel Core i3 1215U",
+      "ram": "8GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "256GB",
+      "alimentacao": "AC/DC",
+      "chaveada": "NÃO",
+      "monitor_numero": 1160,
+      "usuario": "Felipe TI"
+    },
+    {
+      "numero": 1152,
+      "local": "Logística",
+      "ip": "192.168.0.101",
+      "modo_ip": "Estático",
+      "tipo": "Notebook",
+      "processador": "Intel Core i7 5500U",
+      "ram": "8GB DDR3",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "222GB",
+      "alimentacao": "AC/DC",
+      "chaveada": "NÃO",
+      "monitor_numero": "-",
+      "usuario": "Ana Luiza"
+    },
+    {
+      "numero": 1154,
+      "local": "Logística",
+      "ip": "192.168.0.145",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 5600GT",
+      "ram": "16GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "500GB",
+      "alimentacao": "450W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1155,
+      "usuario": "Ana Maria"
+    },
+    {
+      "numero": 1157,
+      "local": "Logística",
+      "ip": "192.168.0.107",
+      "modo_ip": "Estático",
+      "tipo": "Notebook",
+      "processador": "Intel Core i3 1115G4",
+      "ram": "8GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "256GB",
+      "alimentacao": "AC/DC",
+      "chaveada": "NÃO",
+      "monitor_numero": "-",
+      "usuario": "Lara"
+    },
+    {
+      "numero": 1159,
+      "local": "Logística",
+      "ip": "192.168.0.106",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "Intel Core i5 11400",
+      "ram": "16GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "480GB",
+      "alimentacao": "550W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1158,
+      "usuario": "Jéssica"
+    },
+    {
+      "numero": 1161,
+      "local": "Sala Heitor",
+      "ip": "12.0.0.29",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 4600G",
+      "ram": "16GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "476GB",
+      "alimentacao": "400W",
+      "chaveada": "NÃO",
+      "monitor_numero": "1162 | 1163",
+      "usuario": "Heitor"
+    },
+    {
+      "numero": 1165,
+      "local": "Sala Heitor",
+      "ip": "192.168.0.217",
+      "modo_ip": "Estático",
+      "tipo": "Notebook",
+      "processador": "AMD Ryzen 5 5500U",
+      "ram": "8GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "256GB",
+      "alimentacao": "AC/DC",
+      "chaveada": "NÃO",
+      "monitor_numero": "-",
+      "usuario": "Filipe Lage"
+    },
+    {
+      "numero": 1164,
+      "local": "Sala Paulo",
+      "ip": "192.168.0.104",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 4600G",
+      "ram": "16GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "500GB",
+      "alimentacao": "400W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1166,
+      "usuario": "Paulo"
+    },
+    {
+      "numero": 1167,
+      "local": "Recp. Cima",
+      "ip": "192.168.0.139",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 4600G",
+      "ram": "8BG DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "476GB",
+      "alimentacao": "400W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1168,
+      "usuario": "Lourença"
+    },
+    {
+      "numero": 1169,
+      "local": "Embalagem",
+      "ip": "192.168.0.148",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "Intel Core i3 4160",
+      "ram": "6GB DDR3",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "120GB",
+      "alimentacao": "220W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1170,
+      "usuario": "Etiqueta"
+    },
+    {
+      "numero": 1171,
+      "local": "Corredor",
+      "ip": "-",
+      "modo_ip": null,
+      "tipo": "Desktop",
+      "processador": "Intel Pentium G2030",
+      "ram": "4GB DDR3",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "111GB",
+      "alimentacao": null,
+      "chaveada": null,
+      "monitor_numero": 1172,
+      "usuario": "Etiqueta"
+    },
+    {
+      "numero": 1173,
+      "local": "Expedição",
+      "ip": "192.168.0.188",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "Intel Pentium G2030",
+      "ram": "2GB DDR3",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "256GB",
+      "alimentacao": "200W",
+      "chaveada": "SIM",
+      "monitor_numero": 1175,
+      "usuario": "Etiqueta"
+    },
+    {
+      "numero": 1174,
+      "local": "Expedição",
+      "ip": "192.168.0.146",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "Intel Core i3 4160",
+      "ram": "4GB DDR3",
+      "armazenamento_tipo": "HD",
+      "armazenamento_qtd": "465GB",
+      "alimentacao": "200W",
+      "chaveada": "SIM",
+      "monitor_numero": 1177,
+      "usuario": "Etiqueta"
+    },
+    {
+      "numero": 1178,
+      "local": "Expedição",
+      "ip": "14.0.0.116",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 5600GT",
+      "ram": "16GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "500GB",
+      "alimentacao": "450W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1176,
+      "usuario": "Geraldo"
+    },
+    {
+      "numero": 1179,
+      "local": "Confeitaria",
+      "ip": "192.168.0.114",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "Intel Core 2 Duo E7500",
+      "ram": "2GB DDR2",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "256GB",
+      "alimentacao": "200W",
+      "chaveada": "SIM",
+      "monitor_numero": 1180,
+      "usuario": "Etiqueta"
+    },
+    {
+      "numero": 1091,
+      "local": "Sala Ronildo",
+      "ip": "192.168.0.131",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "Intel Core i5 2400",
+      "ram": "8GB DDR3",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "240GB",
+      "alimentacao": "180W",
+      "chaveada": "SIM",
+      "monitor_numero": 1093,
+      "usuario": "Etiqueta"
+    },
+    {
+      "numero": 1095,
+      "local": "Sala Ronildo",
+      "ip": "192.168.0.219",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 4600G",
+      "ram": "16GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "465GB",
+      "alimentacao": "450W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1092,
+      "usuario": "Clarissa"
+    },
+    {
+      "numero": 1097,
+      "local": "Sala Ronildo",
+      "ip": "192.168.0.105",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 PRO 4650G",
+      "ram": "8GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "465GB",
+      "alimentacao": "-",
+      "chaveada": "NÃO",
+      "monitor_numero": 1099,
+      "usuario": "Ronildo"
+    },
+    {
+      "numero": 1100,
+      "local": "Manutenção",
+      "ip": "192.168.0.229",
+      "modo_ip": "Estático",
+      "tipo": "Notebook",
+      "processador": "Intel Core i3 1215U",
+      "ram": "8GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "256GB",
+      "alimentacao": "AC/DC",
+      "chaveada": "NÃO",
+      "monitor_numero": "-",
+      "usuario": "Ludmilly"
+    },
+    {
+      "numero": 1096,
+      "local": "Recp. Baixo",
+      "ip": "192.168.0.224",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 5600GT",
+      "ram": "16GB  DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "222GB",
+      "alimentacao": "400W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1094,
+      "usuario": "Lauriane"
+    },
+    {
+      "numero": 1039,
+      "local": "Segurança",
+      "ip": "192.168.0.112",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 4600G",
+      "ram": "8GB DDR4",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "465GB",
+      "alimentacao": "400W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1034,
+      "usuario": "Diná"
+    },
+    {
+      "numero": 1038,
+      "local": "Segurança",
+      "ip": "192.168.0.113",
+      "modo_ip": "Estático",
+      "tipo": "Desktop",
+      "processador": "AMD Ryzen 5 4600G",
+      "ram": "8GB DDR5",
+      "armazenamento_tipo": "SSD",
+      "armazenamento_qtd": "465GB",
+      "alimentacao": "650W",
+      "chaveada": "NÃO",
+      "monitor_numero": 1031,
+      "usuario": "Claudineia"
+    }
+  ],
+  "monitors": [
+    {
+      "numero": 1160,
+      "local": "Logística",
+      "dispositivo": 1151,
+      "tamanho": "21\""
+    },
+    {
+      "numero": 1158,
+      "local": "Logística",
+      "dispositivo": 1159,
+      "tamanho": "21,5\""
+    },
+    {
+      "numero": 1155,
+      "local": "Logística",
+      "dispositivo": 1154,
+      "tamanho": "21,5\""
+    },
+    {
+      "numero": 1162,
+      "local": "Sala Heitor",
+      "dispositivo": 1161,
+      "tamanho": "19,5\""
+    },
+    {
+      "numero": 1162,
+      "local": "Sala Heitor",
+      "dispositivo": 1161,
+      "tamanho": "21,5\""
+    },
+    {
+      "numero": 1166,
+      "local": "Sala Paulo",
+      "dispositivo": 1164,
+      "tamanho": "21,5\""
+    },
+    {
+      "numero": 1168,
+      "local": "Recp. Cima",
+      "dispositivo": 1167,
+      "tamanho": "19\""
+    },
+    {
+      "numero": 1170,
+      "local": "Embalagem",
+      "dispositivo": 1169,
+      "tamanho": "15,6\""
+    },
+    {
+      "numero": 1172,
+      "local": "Corredor",
+      "dispositivo": 1171,
+      "tamanho": "15,6\""
+    },
+    {
+      "numero": 1175,
+      "local": "Expedição",
+      "dispositivo": 1173,
+      "tamanho": "19\""
+    },
+    {
+      "numero": 1177,
+      "local": "Expedição",
+      "dispositivo": 1174,
+      "tamanho": "17\""
+    },
+    {
+      "numero": 1176,
+      "local": "Expedição",
+      "dispositivo": 1178,
+      "tamanho": "21,5\""
+    },
+    {
+      "numero": 1180,
+      "local": "Confeitaria",
+      "dispositivo": 1179,
+      "tamanho": "16''"
+    },
+    {
+      "numero": 1093,
+      "local": "Sala Ronildo",
+      "dispositivo": 1091,
+      "tamanho": "17''"
+    },
+    {
+      "numero": 1092,
+      "local": "Sala Ronildo",
+      "dispositivo": 1095,
+      "tamanho": "22''"
+    },
+    {
+      "numero": 1099,
+      "local": "Sala Ronildo",
+      "dispositivo": 1097,
+      "tamanho": "19''"
+    },
+    {
+      "numero": 1094,
+      "local": "Recp. Baixo",
+      "dispositivo": 1096,
+      "tamanho": "15''"
+    },
+    {
+      "numero": 1039,
+      "local": "Segurança",
+      "dispositivo": 1034,
+      "tamanho": "15''"
+    },
+    {
+      "numero": 1031,
+      "local": "Segurança",
+      "dispositivo": 1038,
+      "tamanho": "15''"
+    }
+  ]
+}

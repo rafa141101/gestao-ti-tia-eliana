@@ -1,0 +1,55 @@
+# Nome distinto para não colidir com outros projetos "gestao-ti" no mesmo Docker
+name: gestao-ti-tia-eliana
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gestao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-gestao_ti}
+      TZ: America/Sao_Paulo
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gestao} -d ${POSTGRES_DB:-gestao_ti}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gestao}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-gestao_ti}?schema=public
+      API_PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      UPLOAD_DIR: /data/uploads
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-15}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      TZ: America/Sao_Paulo
+    volumes:
+      - uploads:/data/uploads
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-8090}:80"
+
+volumes:
+  db_data:
+  uploads:
