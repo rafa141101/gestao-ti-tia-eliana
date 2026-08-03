@@ -53,11 +53,38 @@ openssl rand -hex 48       # para JWT_SECRET
 
 `APP_URL` deve ser o endereço que as pessoas realmente vão usar no dia a dia dentro da rede da empresa — ex.: `http://10.0.0.15:8090` (IP interno da VM) ou um nome interno, se houver DNS interno.
 
-## 4. Subir o sistema
+## 4. Baixar as imagens
 
 ```bash
 cd ~/gestao-ti
 docker compose -f docker-compose.production.yml pull
+```
+
+## 5. Trazer os dados reais (⚠️ passo obrigatório nesta migração)
+
+**Importante:** as imagens Docker só contêm o *programa* — não trazem nenhum dado. Os chamados, o inventário (39 equipamentos já cadastrados), os usuários etc. moram só no banco de dados. Você vai receber do Rafael um arquivo de backup (`gestao-ti_AAAA-MM-DD_HHMM.dump`, ~100KB) — é ele que traz tudo isso para a VM nova. **Não rode o seed** (isso criaria dados fictícios de demonstração por cima/no lugar dos reais).
+
+Suba só o banco primeiro:
+```bash
+docker compose -f docker-compose.production.yml up -d db
+sleep 10   # aguarda o banco ficar pronto
+```
+
+Copie o arquivo `.dump` que o Rafael te passou para a VM (USB, transferência de rede, o que for mais fácil) e restaure:
+```bash
+docker compose -f docker-compose.production.yml exec -T db pg_restore -U gestao -d gestao_ti --no-owner < gestao-ti_AAAA-MM-DD_HHMM.dump
+```
+(ajuste o nome do arquivo para o que você recebeu)
+
+Se também recebeu o arquivo `..._uploads.tar.gz` (anexos de chamados, se houver), restaure assim:
+```bash
+docker compose -f docker-compose.production.yml up -d api
+sleep 5
+docker compose -f docker-compose.production.yml exec -T api sh -c 'cd /data && tar xzf -' < gestao-ti_AAAA-MM-DD_HHMM_uploads.tar.gz
+```
+
+Agora suba o resto:
+```bash
 docker compose -f docker-compose.production.yml up -d
 ```
 
@@ -66,16 +93,9 @@ Aguarde ~10 segundos e confira:
 docker compose -f docker-compose.production.yml ps
 curl http://localhost:8090/api/health
 ```
-Deve responder `{"status":"ok",...}`.
+Deve responder `{"status":"ok",...}`. Teste também um login (peça as credenciais reais ao Rafael) para confirmar que os dados vieram certos.
 
-## 5. Popular os dados iniciais (contas de acesso)
-
-**Só na primeira vez:**
-```bash
-docker compose -f docker-compose.production.yml exec api npx prisma db seed
-```
-
-Isso cria as contas iniciais (Owner, Administrador, Técnicos etc., senha padrão `Mudar@123` — devem ser trocadas no primeiro acesso). Se os dados já foram migrados manualmente de outra instância, pule este passo.
+> **Instalação nova, sem dados a migrar?** Nesse caso (não é o cenário desta migração), pule a restauração e rode `docker compose -f docker-compose.production.yml exec api npx prisma db seed` para criar contas de demonstração (senha padrão `Mudar@123`, deve ser trocada no primeiro acesso).
 
 ## 6. Acessar
 
