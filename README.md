@@ -14,7 +14,14 @@ O nome do sistema é configurável em **Administração → Configurações**.
 | Infra | Docker Compose (db + api + web/nginx), anexos em volume local |
 | Monorepo | npm workspaces: `apps/api`, `apps/web`, `packages/shared` |
 
-Documentação completa em [`docs/`](docs/): [arquitetura](docs/architecture.md) · [regras de negócio](docs/business-rules.md) · [permissões](docs/permissions.md) · [modelo de dados](docs/data-model.md) · [manual da diretoria](docs/owner-manual.md) · [migração](docs/migration-strategy.md) · [RUNBOOK](docs/RUNBOOK.md) · [SECURITY](docs/SECURITY.md).
+Documentação completa em [`docs/`](docs/): [arquitetura](docs/architecture.md) · [regras de negócio](docs/business-rules.md) · [permissões](docs/permissions.md) · [modelo de dados](docs/data-model.md) · [manual da diretoria](docs/owner-manual.md) · [migração](docs/migration-strategy.md) · [RUNBOOK](docs/RUNBOOK.md) · [SECURITY](docs/SECURITY.md) · **[implantar numa VM nova](docs/VM_SETUP.md)** · **[ativar o WhatsApp](docs/WHATSAPP_SETUP.md)**.
+
+## Implantação em produção (VM dedicada)
+
+Para colocar o sistema numa VM própria (fora desta máquina de desenvolvimento), **não precisa do código-fonte nem compilar nada** — as imagens Docker já estão publicadas (privadas) em `ghcr.io/rafa141101/gestao-ti-tia-eliana-{api,web}`. É só instalar Docker na VM e usar o [`docker-compose.production.yml`](docker-compose.production.yml) + [`.env.production.example`](.env.production.example).
+
+Passo a passo completo, incluindo autenticação no registro de imagens: **[docs/VM_SETUP.md](docs/VM_SETUP.md)**.
+Código-fonte versionado em: https://github.com/rafa141101/gestao-ti-tia-eliana (privado).
 
 Destaques além do escopo básico: busca global (chamados/ativos/projetos), **distribuição automática de chamados por rodízio** (fila em modo round-robin), **auditoria automática** de qualquer mutação não auditada explicitamente, rate-limit global e **integração WhatsApp via API oficial da Meta** (opcional — mensagens viram chamados; respostas da TI voltam na conversa dentro da janela de serviço de 24h, sem custo).
 

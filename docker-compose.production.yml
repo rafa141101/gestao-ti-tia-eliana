@@ -1,0 +1,68 @@
+# ============================================================
+# Gestão TI — Tia Eliana — Implantação em produção
+# Usa as imagens JÁ CONSTRUÍDAS publicadas no GitHub Container
+# Registry (ghcr.io) — não precisa do código-fonte nem compilar
+# nada nesta máquina. Equivalente a "docker compose up" do Metabase.
+#
+# Uso na VM:
+#   1. docker login ghcr.io -u SEU_USUARIO   (veja VM_SETUP.md)
+#   2. cp .env.production.example .env  (preencha os valores)
+#   3. docker compose -f docker-compose.production.yml pull
+#   4. docker compose -f docker-compose.production.yml up -d
+# ============================================================
+name: gestao-ti-tia-eliana
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gestao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-gestao_ti}
+      TZ: America/Sao_Paulo
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # Porta do banco NÃO exposta ao host por padrão em produção (mais seguro).
+    # Descomente só se precisar acessar o banco de fora do Docker.
+    # ports:
+    #   - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gestao} -d ${POSTGRES_DB:-gestao_ti}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: ghcr.io/rafa141101/gestao-ti-tia-eliana-api:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gestao}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-gestao_ti}?schema=public
+      API_PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      UPLOAD_DIR: /data/uploads
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-15}
+      APP_URL: ${APP_URL}
+      TZ: America/Sao_Paulo
+      # Integração WhatsApp (deixe em branco para manter inativa)
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+    volumes:
+      - uploads:/data/uploads
+
+  web:
+    image: ghcr.io/rafa141101/gestao-ti-tia-eliana-web:latest
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-8090}:80"
+
+volumes:
+  db_data:
+  uploads:
