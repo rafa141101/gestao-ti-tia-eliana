@@ -1,15 +1,57 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   LayoutDashboard, Briefcase, Ticket, FolderKanban, RefreshCw, Boxes, TruckIcon,
   Wrench, Building2, BarChart3, ScrollText, Users, Settings, LogOut, Bell, Menu,
-  ChevronDown, CircleDot, Shield, ListTree, Timer, Search,
+  ChevronDown, CircleDot, Shield, ListTree, Timer, Search, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import { fmtRelative } from '../lib/format';
-import { TicketStatusBadge, PriorityBadge, AssetStatusBadge, ProjectStatusBadge } from './ui';
+import { TicketStatusBadge, PriorityBadge, AssetStatusBadge, ProjectStatusBadge, Modal, Field, ErrorText } from './ui';
+
+/** Modal de autoatendimento: qualquer usuário logado troca a própria senha. */
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const change = useMutation({
+    mutationFn: () => api.post('/api/auth/change-password', { currentPassword, newPassword }),
+    onSuccess: () => onClose(),
+  });
+
+  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+
+  return (
+    <Modal title="Trocar minha senha" onClose={onClose}>
+      <div className="space-y-3">
+        <Field label="Senha atual" required>
+          <input type="password" className="input" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} autoFocus />
+        </Field>
+        <Field label="Nova senha (mín. 8 caracteres)" required>
+          <input type="password" className="input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+        </Field>
+        <Field label="Confirmar nova senha" required>
+          <input type="password" className="input" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          {mismatch && <p className="mt-1 text-xs text-red-600">As senhas não coincidem.</p>}
+        </Field>
+        <ErrorText error={change.error} />
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button
+            className="btn-primary"
+            disabled={change.isPending || !currentPassword || newPassword.length < 8 || mismatch}
+            onClick={() => change.mutate()}
+          >
+            {change.isPending ? 'Salvando…' : 'Salvar nova senha'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 interface SearchResults {
   tickets: { id: string; number: string; title: string; status: string; priority: string }[];
@@ -121,6 +163,7 @@ export default function Layout() {
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const { data: notif } = useQuery({
     queryKey: ['notifications'],
@@ -266,6 +309,9 @@ export default function Layout() {
               </button>
               <div className="invisible absolute right-0 z-30 mt-1 w-48 rounded-xl border border-slate-200 bg-white p-1 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
                 <p className="px-3 py-2 text-xs text-slate-500">{user?.email}</p>
+                <button onClick={() => setChangePasswordOpen(true)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  <KeyRound className="h-4 w-4" /> Trocar minha senha
+                </button>
                 <button onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50">
                   <LogOut className="h-4 w-4" /> Sair
                 </button>
@@ -277,6 +323,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      {changePasswordOpen && <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />}
     </div>
   );
 }

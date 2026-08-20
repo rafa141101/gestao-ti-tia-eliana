@@ -1,0 +1,18 @@
+Fábio, bom dia! Preciso que você crie uma VM nova (igual à do Metabase) para subir o sistema de Gestão de TI que estou finalizando.
+
+Specs sugeridas: 2 vCPU / 4GB RAM / 40GB disco / Ubuntu 22.04 ou 24.04.
+
+Todo o passo a passo está documentado aqui, já testado do início ao fim:
+https://github.com/rafa141101/gestao-ti-tia-eliana/blob/main/docs/VM_SETUP.md
+
+Resumo rápido:
+1. Instala Docker na VM (um comando só, tá no guia)
+2. Eu vou te passar uma chave de acesso (só para baixar as imagens prontas — não precisa compilar nada, é só como instalar o Metabase)
+3. Vou te mandar também um arquivo de backup do banco (tem os 39 equipamentos que já cadastramos e os usuários configurados) — isso é IMPORTANTE, sem restaurar esse arquivo o sistema sobe vazio. O guia explica certinho como restaurar (passo 5).
+4. Depois disso é só acessar pelo navegador.
+
+Nenhuma porta precisa ficar aberta para a internet — o sistema roda só na rede interna, igual os outros.
+
+A integração com WhatsApp fica pra depois, não trava nada agora — configuro com calma quando o sistema já estiver rodando na VM.
+
+Qualquer dúvida no processo me chama. Valeu!
