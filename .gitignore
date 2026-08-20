@@ -13,3 +13,4 @@ coverage/
 Thumbs.db
 *.log
 .claude/
+backups/*.txt
