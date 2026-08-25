@@ -1,11 +1,59 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import * as XLSX from 'xlsx';
 import { prisma } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { AppError } from '../lib/errors.js';
 import { nextAssetCode, generatePublicId } from '../lib/numbers.js';
 import { ASSET_STATUSES, ASSET_KINDS, COMPONENT_STATUSES, CRITICALITIES } from '@gestao-ti/shared';
 import type { Prisma } from '@prisma/client';
+
+/** Colunas do modelo de planilha de importação de componentes (nessa ordem). */
+const IMPORT_COLUMNS = ['Tipo', 'Marca', 'Modelo', 'Nº de série', 'Capacidade', 'Fornecedor', 'Custo (R$)', 'Observações'] as const;
+const IMPORT_EXAMPLE_ROW = ['Memória RAM', 'Kingston', 'DDR4 2666', '', '8GB', '', '', 'Trocada em 2026'];
+
+interface ImportRow {
+  type: string; brand?: string; model?: string; serialNumber?: string;
+  capacity?: string; supplier?: string; cost?: number; notes?: string;
+}
+
+function parseImportSheet(buffer: Buffer): { rows: ImportRow[]; rowErrors: { row: number; message: string }[] } {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+  const rows: ImportRow[] = [];
+  const rowErrors: { row: number; message: string }[] = [];
+
+  raw.forEach((r, i) => {
+    const rowNumber = i + 2; // +1 cabeçalho, +1 índice baseado em 1
+    const type = String(r['Tipo'] ?? '').trim();
+    if (!type) {
+      // Linha totalmente vazia é ignorada silenciosamente (planilha com linhas em branco no fim)
+      const hasAnyValue = Object.values(r).some((v) => String(v ?? '').trim() !== '');
+      if (hasAnyValue) rowErrors.push({ row: rowNumber, message: 'Coluna "Tipo" é obrigatória.' });
+      return;
+    }
+    const costRaw = String(r['Custo (R$)'] ?? '').trim().replace(',', '.');
+    const cost = costRaw ? Number(costRaw) : undefined;
+    if (costRaw && Number.isNaN(cost)) {
+      rowErrors.push({ row: rowNumber, message: `Custo inválido: "${r['Custo (R$)']}".` });
+      return;
+    }
+    rows.push({
+      type,
+      brand: String(r['Marca'] ?? '').trim() || undefined,
+      model: String(r['Modelo'] ?? '').trim() || undefined,
+      serialNumber: String(r['Nº de série'] ?? '').trim() || undefined,
+      capacity: String(r['Capacidade'] ?? '').trim() || undefined,
+      supplier: String(r['Fornecedor'] ?? '').trim() || undefined,
+      cost,
+      notes: String(r['Observações'] ?? '').trim() || undefined,
+    });
+  });
+
+  return { rows, rowErrors };
+}
 
 const assetSchema = z.object({
   patrimonyCode: z.string().nullable().optional(),
@@ -232,6 +280,84 @@ export async function assetRoutes(app: FastifyInstance) {
     });
     await audit({ userId: req.authUser.id, action: 'CRIACAO', entity: 'asset_components', entityId: comp.id, req, after: { type: comp.type, assetId: id } });
     return reply.code(201).send(comp);
+  });
+
+  /** Modelo de planilha (.xlsx) para importação em lote de componentes. */
+  app.get('/components/import-template', async (_req, reply) => {
+    const ws = XLSX.utils.aoa_to_sheet([[...IMPORT_COLUMNS], IMPORT_EXAMPLE_ROW]);
+    ws['!cols'] = IMPORT_COLUMNS.map((c) => ({ wch: Math.max(14, c.length + 4) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Componentes');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('Content-Disposition', 'attachment; filename="modelo-componentes.xlsx"');
+    return reply.send(buffer);
+  });
+
+  /** Importação em lote de componentes de um ativo a partir da planilha modelo. */
+  app.post('/:id/components/import', { preHandler: [app.requirePermission('inventory.register')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const asset = await prisma.asset.findUnique({ where: { id }, select: { id: true, code: true } });
+    if (!asset) throw new AppError('Ativo não encontrado.', 404);
+
+    const parts = req.parts();
+    let buffer: Buffer | null = null;
+    let filename = '';
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const allowed = [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+        ];
+        if (!allowed.includes(part.mimetype)) {
+          part.file.resume();
+          throw new AppError('Envie um arquivo .xlsx (modelo baixado na tela).', 400);
+        }
+        filename = part.filename ?? 'planilha.xlsx';
+        buffer = await part.toBuffer();
+      }
+    }
+    if (!buffer) throw new AppError('Nenhum arquivo enviado.', 400);
+
+    let rows: ImportRow[];
+    let rowErrors: { row: number; message: string }[];
+    try {
+      ({ rows, rowErrors } = parseImportSheet(buffer));
+    } catch {
+      throw new AppError('Não foi possível ler a planilha. Confirme que é o arquivo .xlsx do modelo.', 400);
+    }
+    if (rows.length === 0 && rowErrors.length === 0) {
+      throw new AppError('A planilha não tem nenhuma linha preenchida.', 400);
+    }
+    if (rows.length > 500) {
+      throw new AppError('Máximo de 500 componentes por importação.', 400);
+    }
+
+    const created = await prisma.$transaction(
+      rows.map((r) =>
+        prisma.assetComponent.create({
+          data: {
+            assetId: id,
+            type: r.type,
+            brand: r.brand ?? null,
+            model: r.model ?? null,
+            serialNumber: r.serialNumber ?? null,
+            capacity: r.capacity ?? null,
+            supplier: r.supplier ?? null,
+            cost: r.cost ?? null,
+            notes: r.notes ?? null,
+            installedAt: new Date(),
+          },
+        }),
+      ),
+    );
+
+    await audit({
+      userId: req.authUser.id, action: 'IMPORTACAO_COMPONENTES', entity: 'assets', entityId: id, req,
+      after: { assetCode: asset.code, arquivo: filename, criados: created.length, linhasComErro: rowErrors.length },
+    });
+
+    return reply.code(201).send({ created: created.length, rowErrors });
   });
 
   /** Substituição/retirada de componente — o histórico permanece (regra 21.13). */

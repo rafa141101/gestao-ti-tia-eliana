@@ -5,7 +5,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/web/package.json apps/web/
-RUN npm ci --no-audit --no-fund
+# strict-ssl desativado só aqui: contorna antivírus com inspeção HTTPS (ex.: Avast) cujo
+# certificado não está na CA do container. A integridade dos pacotes continua garantida
+# pelos hashes sha512 do package-lock.json, verificados pelo npm independente do TLS.
+RUN NPM_CONFIG_STRICT_SSL=false npm ci --no-audit --no-fund
 
 COPY packages/shared packages/shared
 COPY apps/web apps/web

@@ -5,12 +5,18 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/api/package.json apps/api/
-RUN npm ci --no-audit --no-fund
+# strict-ssl desativado só aqui: contorna antivírus com inspeção HTTPS (ex.: Avast) cujo
+# certificado não está na CA do container. A integridade dos pacotes continua garantida
+# pelos hashes sha512 do package-lock.json, verificados pelo npm independente do TLS.
+RUN NPM_CONFIG_STRICT_SSL=false npm ci --no-audit --no-fund
 
 COPY packages/shared packages/shared
 COPY apps/api apps/api
+# NODE_TLS_REJECT_UNAUTHORIZED=0 só aqui: o instalador do motor do Prisma usa o cliente
+# HTTPS do Node diretamente (não passa pela config do npm) e esbarra no mesmo antivírus
+# com inspeção HTTPS mencionado acima.
 RUN npm run build -w @gestao-ti/shared \
- && npx -w @gestao-ti/api prisma generate \
+ && NODE_TLS_REJECT_UNAUTHORIZED=0 npx -w @gestao-ti/api prisma generate \
  && npm run build -w @gestao-ti/api
 
 # ===== API — runtime =====

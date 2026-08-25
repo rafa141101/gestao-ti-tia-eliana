@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Printer, TruckIcon, Wrench } from 'lucide-react';
-import { api } from '../lib/api';
+import { Plus, Printer, TruckIcon, Wrench, Upload, Download } from 'lucide-react';
+import { api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtDate, fmtDateTime, fmtMinutes } from '../lib/format';
 import { PageHeader, Spinner, ErrorText, AssetStatusBadge, MovementStatusBadge, GenericBadge, Modal, Field, TicketStatusBadge } from '../components/ui';
@@ -20,6 +20,7 @@ export default function AtivoDetalhe() {
 
   const [qrModal, setQrModal] = useState(false);
   const [compModal, setCompModal] = useState(false);
+  const [importModal, setImportModal] = useState(false);
   const [movModal, setMovModal] = useState(false);
   const [maintModal, setMaintModal] = useState(false);
 
@@ -40,6 +41,15 @@ export default function AtivoDetalhe() {
       cost: comp.cost ? Number(comp.cost) : null,
     }),
     onSuccess: () => { setCompModal(false); setComp({ type: '', brand: '', model: '', capacity: '', serialNumber: '', cost: '' }); invalidate(); },
+  });
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const importComponents = useMutation({
+    mutationFn: () => {
+      const fd = new FormData();
+      fd.append('file', importFile!);
+      return api.post<{ created: number; rowErrors: { row: number; message: string }[] }>(`/api/assets/${id}/components/import`, fd);
+    },
+    onSuccess: () => invalidate(),
   });
   const removeComponent = useMutation({
     mutationFn: ({ compId, destination }: { compId: string; destination: string }) =>
@@ -132,7 +142,14 @@ export default function AtivoDetalhe() {
           <section className="card">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <h2 className="text-sm font-bold">Componentes</h2>
-              {can('inventory.register') && <button className="btn-secondary !py-1 text-xs" onClick={() => setCompModal(true)}><Plus className="h-3.5 w-3.5" /> Componente</button>}
+              {can('inventory.register') && (
+                <div className="flex gap-2">
+                  <button className="btn-secondary !py-1 text-xs" onClick={() => { setImportFile(null); importComponents.reset(); setImportModal(true); }}>
+                    <Upload className="h-3.5 w-3.5" /> Importar
+                  </button>
+                  <button className="btn-secondary !py-1 text-xs" onClick={() => setCompModal(true)}><Plus className="h-3.5 w-3.5" /> Componente</button>
+                </div>
+              )}
             </div>
             {a.components.length === 0 ? <p className="px-4 py-4 text-xs text-slate-400">Nenhum componente cadastrado.</p> : (
               <table className="w-full">
@@ -238,6 +255,63 @@ export default function AtivoDetalhe() {
           <ErrorText error={addComponent.error} />
           <div className="mt-4 flex justify-end">
             <button className="btn-primary" disabled={addComponent.isPending || comp.type.length < 2} onClick={() => addComponent.mutate()}>Adicionar</button>
+          </div>
+        </Modal>
+      )}
+
+      {importModal && (
+        <Modal title={`Importar componentes — ${a.code}`} onClose={() => setImportModal(false)}>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Baixe o modelo, preencha uma linha por componente e envie de volta aqui. A coluna <strong>Tipo</strong> é obrigatória; as demais são opcionais.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary w-full justify-center"
+              onClick={() => downloadFile('/api/assets/components/import-template', 'modelo-componentes.xlsx')}
+            >
+              <Download className="h-4 w-4" /> Baixar modelo (.xlsx)
+            </button>
+
+            <Field label="Planilha preenchida (.xlsx)" required>
+              <input
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="input"
+                onChange={(e) => { setImportFile(e.target.files?.[0] ?? null); importComponents.reset(); }}
+              />
+            </Field>
+
+            <ErrorText error={importComponents.error} />
+
+            {importComponents.data && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p className="font-medium text-emerald-700">{importComponents.data.created} componente(s) importado(s) com sucesso.</p>
+                {importComponents.data.rowErrors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="font-medium text-red-600">{importComponents.data.rowErrors.length} linha(s) com problema (não importadas):</p>
+                    <ul className="mt-1 list-inside list-disc text-xs text-red-600">
+                      {importComponents.data.rowErrors.map((e, i) => (
+                        <li key={i}>Linha {e.row}: {e.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => setImportModal(false)}>
+                {importComponents.data ? 'Fechar' : 'Cancelar'}
+              </button>
+              <button
+                className="btn-primary"
+                disabled={!importFile || importComponents.isPending}
+                onClick={() => importComponents.mutate()}
+              >
+                {importComponents.isPending ? 'Importando…' : 'Importar'}
+              </button>
+            </div>
           </div>
         </Modal>
       )}
