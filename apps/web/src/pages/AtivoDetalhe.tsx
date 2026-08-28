@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Printer, TruckIcon, Wrench, Upload, Download } from 'lucide-react';
+import { Plus, Printer, TruckIcon, Wrench, Upload, Download, Paperclip, Image as ImageIcon, FileText } from 'lucide-react';
 import { api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtDate, fmtDateTime, fmtMinutes } from '../lib/format';
@@ -17,6 +17,16 @@ export default function AtivoDetalhe() {
   const { can } = useAuth();
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ['asset', id] });
+
+  const uploadAsset = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append('assetId', id!);
+      fd.append('file', file);
+      return api.post('/api/attachments', fd);
+    },
+    onSuccess: invalidate,
+  });
 
   const [qrModal, setQrModal] = useState(false);
   const [compModal, setCompModal] = useState(false);
@@ -120,6 +130,48 @@ export default function AtivoDetalhe() {
             {a.mac && <Row k="MAC" v={a.mac} />}
             {a.os && <Row k="Sistema operacional" v={a.os} />}
             {a.notes && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{a.notes}</p>}
+          </div>
+
+          {/* Fotos e anexos */}
+          <div className="card p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-bold">Fotos e anexos</h2>
+              {can('inventory.register') && (
+                <label className="flex cursor-pointer items-center gap-1 text-xs text-brand-600 hover:underline">
+                  <Paperclip className="h-3.5 w-3.5" /> Adicionar
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => e.target.files?.[0] && uploadAsset.mutate(e.target.files[0])}
+                  />
+                </label>
+              )}
+            </div>
+            {uploadAsset.isPending && <p className="text-xs text-slate-400">Enviando…</p>}
+            <ErrorText error={uploadAsset.error} />
+            {a.attachments.length === 0 ? (
+              <p className="text-xs text-slate-400">Nenhuma foto ou anexo ainda.</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {a.attachments.map((att: any) => (
+                  <button
+                    key={att.id}
+                    type="button"
+                    className="flex flex-col items-center gap-1 rounded-lg border border-slate-200 p-2 text-center hover:border-brand-300 hover:bg-slate-50"
+                    title={att.filename}
+                    onClick={() => downloadFile(`/api/attachments/${att.id}/download`, att.filename)}
+                  >
+                    {att.mimeType?.startsWith('image/') ? (
+                      <ImageIcon className="h-6 w-6 text-slate-400" />
+                    ) : (
+                      <FileText className="h-6 w-6 text-slate-400" />
+                    )}
+                    <span className="w-full truncate text-[10px] text-slate-500">{att.filename}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {a.tickets.length > 0 && (
