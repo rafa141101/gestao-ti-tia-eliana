@@ -72,6 +72,7 @@ const createSchema = z.object({
   tags: z.array(z.string()).optional(),
   infoOwnerArea: z.string().nullable().optional(),
   scheduledFor: z.string().datetime().nullable().optional(),
+  watcherIds: z.array(z.string().uuid()).optional(),
 });
 
 const statusSchema = z.object({
@@ -186,6 +187,15 @@ export async function applyStatusChange(
   }
   if (isReopen && ticket.assigneeId) {
     await notifyUser(ticket.assigneeId, 'chamado_reaberto', `Chamado ${ticket.number} foi reaberto`, opts.justification ?? opts.comment ?? undefined, 'tickets', ticketId);
+  }
+  if (to === 'EM_ATENDIMENTO' || to === 'RESOLVIDO') {
+    const watchers = await prisma.ticketWatcher.findMany({ where: { ticketId }, select: { userId: true } });
+    const label = to === 'EM_ATENDIMENTO' ? 'está em atendimento' : 'foi resolvido';
+    await Promise.all(
+      watchers
+        .filter((w) => w.userId !== actor.id)
+        .map((w) => notifyUser(w.userId, 'chamado_observado', `Chamado ${ticket.number} ${label}`, ticket.title, 'tickets', ticketId)),
+    );
   }
   return updated;
 }
@@ -323,6 +333,13 @@ export async function ticketRoutes(app: FastifyInstance) {
       if (autoAssigneeId) {
         await tx.ticketEvent.create({
           data: { ticketId: t.id, type: 'ATRIBUICAO', toValue: 'auto', comment: 'Distribuição automática da fila (rodízio)' },
+        });
+      }
+      const watcherIds = [...new Set((data.watcherIds ?? []).filter((wid) => wid !== requesterId))];
+      if (watcherIds.length) {
+        await tx.ticketWatcher.createMany({
+          data: watcherIds.map((watcherId) => ({ ticketId: t.id, userId: watcherId })),
+          skipDuplicates: true,
         });
       }
       return t;
@@ -623,14 +640,39 @@ export async function ticketRoutes(app: FastifyInstance) {
   });
 
   // Observadores
-  app.post('/:id/watchers', { preHandler: [app.requirePermission('tickets.work')] }, async (req) => {
+  app.post('/:id/watchers', async (req) => {
     const { id } = req.params as { id: string };
     const { userId } = z.object({ userId: z.string().uuid() }).parse(req.body);
+    const u = req.authUser;
+
+    const ticket = await prisma.ticket.findFirst({ where: { AND: [{ id }, ticketScopeFor(u)] } });
+    if (!ticket) throw new AppError('Chamado não encontrado ou sem acesso.', 404);
+    if (ticket.requesterId !== u.id && !hasPermission(u.role, 'tickets.work')) {
+      throw new AppError('Apenas o solicitante ou a equipe de TI podem adicionar observadores.', 403);
+    }
+
     await prisma.ticketWatcher.upsert({
       where: { ticketId_userId: { ticketId: id, userId } },
       create: { ticketId: id, userId },
       update: {},
     });
+    await prisma.ticketEvent.create({
+      data: { ticketId: id, userId: u.id, type: 'OBSERVADOR', comment: 'Observador adicionado' },
+    });
+    return { ok: true };
+  });
+
+  app.delete('/:id/watchers/:userId', async (req) => {
+    const { id, userId } = req.params as { id: string; userId: string };
+    const u = req.authUser;
+
+    const ticket = await prisma.ticket.findFirst({ where: { AND: [{ id }, ticketScopeFor(u)] } });
+    if (!ticket) throw new AppError('Chamado não encontrado ou sem acesso.', 404);
+    if (ticket.requesterId !== u.id && !hasPermission(u.role, 'tickets.work')) {
+      throw new AppError('Apenas o solicitante ou a equipe de TI podem remover observadores.', 403);
+    }
+
+    await prisma.ticketWatcher.deleteMany({ where: { ticketId: id, userId } });
     return { ok: true };
   });
 }

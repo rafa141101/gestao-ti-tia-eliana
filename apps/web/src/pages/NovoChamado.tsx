@@ -27,6 +27,7 @@ export default function NovoChamado() {
   const [assetSearch, setAssetSearch] = useState('');
   const [assetId, setAssetId] = useState('');
   const [formResponses, setFormResponses] = useState<Record<string, unknown>>({});
+  const [watcherIds, setWatcherIds] = useState<string[]>([]);
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -39,7 +40,6 @@ export default function NovoChamado() {
   const { data: users } = useQuery({
     queryKey: ['user-options'],
     queryFn: () => api.get<{ id: string; name: string }[]>('/api/users/options'),
-    enabled: can('tickets.work'),
   });
   const { data: assets } = useQuery({
     queryKey: ['asset-search', assetSearch],
@@ -60,6 +60,7 @@ export default function NovoChamado() {
       requesterId: requesterId || undefined,
       assetId: assetId || null,
       formResponses: Object.keys(formResponses).length ? formResponses : null,
+      watcherIds: watcherIds.length ? watcherIds : undefined,
     }),
     onSuccess: (res) => navigate(`/chamados/${res.id}`),
   });
@@ -158,6 +159,40 @@ export default function NovoChamado() {
             </Field>
           )}
         </div>
+
+        <Field label="Avisar quando o chamado for atendido (opcional)">
+          {watcherIds.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {watcherIds.map((wid) => {
+                const w = (users ?? []).find((u) => u.id === wid);
+                return (
+                  <span key={wid} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-700">
+                    {w?.name ?? '…'}
+                    <button
+                      type="button"
+                      className="text-brand-400 hover:text-brand-700"
+                      aria-label={`Remover ${w?.name ?? ''}`}
+                      onClick={() => setWatcherIds((ids) => ids.filter((id) => id !== wid))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <select
+            className="input"
+            value=""
+            onChange={(e) => { if (e.target.value) setWatcherIds((ids) => [...ids, e.target.value]); }}
+          >
+            <option value="">+ Adicionar pessoa…</option>
+            {(users ?? [])
+              .filter((u) => u.id !== user?.id && u.id !== requesterId && !watcherIds.includes(u.id))
+              .map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-slate-400">Essas pessoas recebem uma notificação quando o chamado entrar em atendimento e quando for resolvido.</p>
+        </Field>
 
         {can('tickets.work') && (
           <div className="grid gap-4 sm:grid-cols-2">

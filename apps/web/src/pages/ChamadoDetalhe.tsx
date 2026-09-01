@@ -41,7 +41,7 @@ export default function ChamadoDetalhe() {
   const { data: users } = useQuery({
     queryKey: ['user-options'],
     queryFn: () => api.get<{ id: string; name: string; role: string }[]>('/api/users/options'),
-    enabled: can('tickets.work'),
+    enabled: can('tickets.work') || t?.requesterId === user?.id,
   });
   const { data: thirdParties } = useQuery({
     queryKey: ['third-parties'],
@@ -90,6 +90,14 @@ export default function ChamadoDetalhe() {
     mutationFn: (input: Record<string, unknown>) => api.post('/api/worklogs', { ...input, ticketId: id }),
     onSuccess: () => { setManualModal(false); invalidate(); },
   });
+  const addWatcher = useMutation({
+    mutationFn: (userId: string) => api.post(`/api/tickets/${id}/watchers`, { userId }),
+    onSuccess: invalidate,
+  });
+  const removeWatcher = useMutation({
+    mutationFn: (userId: string) => api.del(`/api/tickets/${id}/watchers/${userId}`),
+    onSuccess: invalidate,
+  });
 
   async function uploadAttachment(file: File) {
     const fd = new FormData();
@@ -105,6 +113,7 @@ export default function ChamadoDetalhe() {
 
   const isTech = can('tickets.work');
   const isRequester = user?.id === t.requesterId;
+  const canManageWatchers = isTech || isRequester;
   const transitions = (TICKET_STATUS_TRANSITIONS[t.status as TicketStatus] ?? []).filter((s) => isTech);
 
   // Linha do tempo unificada (eventos + comentários) em ordem cronológica
@@ -339,6 +348,36 @@ export default function ChamadoDetalhe() {
                   <li key={r.id}><Link className="text-brand-600 hover:underline" to={`/chamados/${r.ticket.id}`}>{r.ticket.number} — {r.ticket.title}</Link></li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* Observadores */}
+          {(canManageWatchers || (t.watchers?.length ?? 0) > 0) && (
+            <div className="card space-y-2 p-4 text-sm">
+              <p className="text-xs font-bold uppercase text-slate-400">Avisar quando for atendido</p>
+              {(t.watchers?.length ?? 0) === 0 && <p className="text-xs text-slate-400">Ninguém adicionado ainda.</p>}
+              <ul className="space-y-1">
+                {(t.watchers ?? []).map((w: any) => (
+                  <li key={w.userId} className="flex items-center justify-between gap-2">
+                    <span>{w.user.name}</span>
+                    {canManageWatchers && (
+                      <button className="text-xs text-red-500 hover:underline" onClick={() => removeWatcher.mutate(w.userId)}>remover</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {canManageWatchers && (
+                <select
+                  className="input"
+                  value=""
+                  onChange={(e) => { if (e.target.value) addWatcher.mutate(e.target.value); }}
+                >
+                  <option value="">+ Adicionar pessoa…</option>
+                  {(users ?? [])
+                    .filter((u) => u.id !== t.requesterId && !(t.watchers ?? []).some((w: any) => w.userId === u.id))
+                    .map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              )}
             </div>
           )}
 

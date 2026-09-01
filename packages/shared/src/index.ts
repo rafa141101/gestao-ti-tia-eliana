@@ -428,7 +428,7 @@ export const SLA_MODE_LABELS: Record<SlaMode, string> = { CORRIDO: 'Tempo corrid
 // ---------- Eventos de chamado ----------
 export const TICKET_EVENT_TYPES = [
   'CRIACAO', 'STATUS', 'PRIORIDADE', 'ATRIBUICAO', 'FILA', 'PRIMEIRA_RESPOSTA', 'RESOLUCAO',
-  'REABERTURA', 'FECHAMENTO', 'CANCELAMENTO', 'VINCULO', 'SLA', 'INTERRUPCAO', 'EDICAO',
+  'REABERTURA', 'FECHAMENTO', 'CANCELAMENTO', 'VINCULO', 'SLA', 'INTERRUPCAO', 'EDICAO', 'OBSERVADOR',
 ] as const;
 export type TicketEventType = (typeof TICKET_EVENT_TYPES)[number];
 
@@ -447,6 +447,7 @@ export const TICKET_EVENT_LABELS: Record<TicketEventType, string> = {
   SLA: 'SLA',
   INTERRUPCAO: 'Interrupção',
   EDICAO: 'Edição',
+  OBSERVADOR: 'Observador',
 };
 
 // ---------- Config padrão ----------
