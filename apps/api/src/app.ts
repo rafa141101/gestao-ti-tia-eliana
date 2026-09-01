@@ -30,6 +30,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { publicRoutes } from './routes/public.js';
 import { searchRoutes } from './routes/search.js';
 import { whatsappRoutes } from './routes/whatsapp.js';
+import { agentRoutes } from './routes/agent.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -122,6 +123,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(publicRoutes, { prefix: '/api/public' });
   await app.register(searchRoutes, { prefix: '/api/search' });
   await app.register(whatsappRoutes, { prefix: '/api/integrations/whatsapp' });
+  await app.register(agentRoutes, { prefix: '/api/agent' });
 
   return app;
 }

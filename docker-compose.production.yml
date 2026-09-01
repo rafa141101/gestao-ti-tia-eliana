@@ -52,6 +52,8 @@ services:
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      # Agente de inventário (em branco = coleta automática desligada)
+      AGENT_TOKEN: ${AGENT_TOKEN:-}
     volumes:
       - uploads:/data/uploads
 

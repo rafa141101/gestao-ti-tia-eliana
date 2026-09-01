@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Printer, TruckIcon, Wrench, Upload, Download, Paperclip, Image as ImageIcon, FileText } from 'lucide-react';
+import {
+  Plus, Printer, TruckIcon, Wrench, Upload, Download, Paperclip, Image as ImageIcon, FileText,
+  Cpu, HardDrive, ShieldCheck, ShieldAlert, Link2, AlertTriangle, ChevronDown, ChevronRight,
+} from 'lucide-react';
 import { api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { fmtDate, fmtDateTime, fmtMinutes } from '../lib/format';
+import { fmtDate, fmtDateTime, fmtMinutes, fmtRelative } from '../lib/format';
 import { PageHeader, Spinner, ErrorText, AssetStatusBadge, MovementStatusBadge, GenericBadge, Modal, Field, TicketStatusBadge } from '../components/ui';
 import {
   MOVEMENT_TYPES, MOVEMENT_TYPE_LABELS, MAINTENANCE_TYPES, MAINTENANCE_TYPE_LABELS,
@@ -15,6 +18,7 @@ import {
 export default function AtivoDetalhe() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ['asset', id] });
 
@@ -33,6 +37,8 @@ export default function AtivoDetalhe() {
   const [importModal, setImportModal] = useState(false);
   const [movModal, setMovModal] = useState(false);
   const [maintModal, setMaintModal] = useState(false);
+  const [linkModal, setLinkModal] = useState(false);
+  const [showSoftware, setShowSoftware] = useState(false);
 
   const { data: a, isLoading, error } = useQuery({
     queryKey: ['asset', id],
@@ -52,6 +58,24 @@ export default function AtivoDetalhe() {
     }),
     onSuccess: () => { setCompModal(false); setComp({ type: '', brand: '', model: '', capacity: '', serialNumber: '', cost: '' }); invalidate(); },
   });
+  const confirmDiscovery = useMutation({
+    mutationFn: () => api.patch(`/api/assets/${id}`, { discoveredByAgent: false }),
+    onSuccess: invalidate,
+  });
+  const [linkTarget, setLinkTarget] = useState('');
+  const [linkSearch, setLinkSearch] = useState('');
+  const linkDiscovered = useMutation({
+    mutationFn: () => api.post<{ targetCode: string }>(`/api/assets/${id}/link-discovered`, { targetAssetId: linkTarget }),
+    onSuccess: (res) => { setLinkModal(false); navigate(`/inventario?search=${res.targetCode}`); },
+  });
+  const { data: linkOptions } = useQuery({
+    queryKey: ['asset-link-search', linkSearch],
+    queryFn: () => api.get<{ items: { id: string; code: string; description: string; patrimonyCode?: string }[] }>(
+      `/api/assets?search=${encodeURIComponent(linkSearch)}&pageSize=10`,
+    ),
+    enabled: linkModal && linkSearch.length >= 2,
+  });
+
   const [importFile, setImportFile] = useState<File | null>(null);
   const importComponents = useMutation({
     mutationFn: () => {
@@ -103,6 +127,37 @@ export default function AtivoDetalhe() {
         </>
       } />
 
+      {a.discoveredByAgent && (
+        <div className="card mb-5 border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-amber-900">Descoberto automaticamente — precisa de conferência</p>
+              <p className="mt-1 text-sm text-amber-800">
+                O agente encontrou esta máquina na rede mas não conseguiu identificar com certeza qual cadastro é o dela.
+                Se já existir um cadastro deste mesmo equipamento, vincule para não ficar duplicado. Se for uma máquina
+                nova mesmo, complete o cadastro e marque como conferida.
+              </p>
+              {can('inventory.register') && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button className="btn-primary !py-1 text-xs" onClick={() => setLinkModal(true)}>
+                    <Link2 className="h-3.5 w-3.5" /> Vincular a cadastro existente
+                  </button>
+                  <button
+                    className="btn-secondary !py-1 text-xs"
+                    onClick={() => confirmDiscovery.mutate()}
+                    disabled={confirmDiscovery.isPending}
+                  >
+                    É uma máquina nova — marcar como conferida
+                  </button>
+                </div>
+              )}
+              <ErrorText error={confirmDiscovery.error} />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-4">
           <div className="card space-y-2.5 p-4 text-sm">
@@ -129,7 +184,13 @@ export default function AtivoDetalhe() {
             {a.ip && <Row k="IP" v={a.ip} />}
             {a.mac && <Row k="MAC" v={a.mac} />}
             {a.os && <Row k="Sistema operacional" v={a.os} />}
-            {a.notes && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{a.notes}</p>}
+            {a.lastSeenAt && (
+              <>
+                <hr className="border-slate-100" />
+                <Row k="Última coleta do agente" v={fmtDateTime(a.lastSeenAt)} />
+              </>
+            )}
+            {a.notes && <p className="whitespace-pre-wrap rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{a.notes}</p>}
           </div>
 
           {/* Fotos e anexos */}
@@ -190,6 +251,125 @@ export default function AtivoDetalhe() {
         </div>
 
         <div className="space-y-5 lg:col-span-2">
+          {/* Configuração coletada pelo agente */}
+          {a.lastSeenAt && a.specs && (
+            <section className="card p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Cpu className="h-4 w-4 text-brand-600" />
+                <h2 className="text-sm font-bold">Configuração coletada automaticamente</h2>
+                <span className="ml-auto text-xs text-slate-400">{fmtRelative(a.lastSeenAt)}</span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {a.specs.processador && <Row k="Processador" v={`${a.specs.processador}${a.specs.nucleos ? ` (${a.specs.nucleos}c/${a.specs.threads}t)` : ''}`} />}
+                {a.specs.memoriaTotalGB && <Row k="Memória total" v={`${a.specs.memoriaTotalGB} GB`} />}
+                {a.specs.biosVersao && <Row k="BIOS" v={String(a.specs.biosVersao)} />}
+                {a.specs.dominio && <Row k="Domínio" v={String(a.specs.dominio)} />}
+                {a.specs.ultimaInicializacao && <Row k="Ligada desde" v={fmtDateTime(a.specs.ultimaInicializacao)} />}
+              </div>
+
+              {Array.isArray(a.specs.memoriaModulos) && a.specs.memoriaModulos.length > 0 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Pentes: {a.specs.memoriaModulos.map((m: any) => `${m.capacidadeGB}GB ${m.tipo}${m.velocidade ? ` ${m.velocidade}MHz` : ''}`).join(' + ')}
+                </p>
+              )}
+
+              {Array.isArray(a.specs.volumes) && a.specs.volumes.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Espaço em disco</p>
+                  {a.specs.volumes.map((v: any) => {
+                    const usadoPct = 100 - (v.livrePct ?? 0);
+                    const critico = (v.livrePct ?? 100) < 10;
+                    const atencao = (v.livrePct ?? 100) < 20;
+                    return (
+                      <div key={v.unidade}>
+                        <div className="mb-0.5 flex justify-between text-xs">
+                          <span className="font-medium text-slate-600">{v.unidade}</span>
+                          <span className={critico ? 'font-semibold text-red-600' : atencao ? 'text-amber-600' : 'text-slate-500'}>
+                            {v.livreGB} GB livres de {v.totalGB} GB ({v.livrePct}%)
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-100">
+                          <div
+                            className={`h-2 rounded-full ${critico ? 'bg-red-500' : atencao ? 'bg-amber-500' : 'bg-brand-500'}`}
+                            style={{ width: `${Math.min(100, usadoPct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {Array.isArray(a.specs.discos) && a.specs.discos.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Discos físicos</p>
+                  <ul className="space-y-1">
+                    {a.specs.discos.map((d: any, i: number) => (
+                      <li key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                        <HardDrive className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <span className="truncate">{d.modelo}</span>
+                        <span className="shrink-0 text-slate-400">{d.tamanhoGB} GB · {d.tipo}</span>
+                        {d.saude && d.saude !== 'OK' && <span className="shrink-0 font-semibold text-red-600">{d.saude}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {Array.isArray(a.specs.antivirus) && a.specs.antivirus.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Antivírus</p>
+                  <ul className="space-y-1">
+                    {a.specs.antivirus.map((av: any, i: number) => (
+                      <li key={i} className="flex items-center gap-1.5 text-xs">
+                        {av.ativo
+                          ? <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                          : <ShieldAlert className="h-3.5 w-3.5 text-slate-400" />}
+                        <span className={av.ativo ? 'font-medium text-slate-700' : 'text-slate-400'}>{av.nome}</span>
+                        <span className="text-slate-400">
+                          {av.ativo ? 'ativo' : 'inativo'}{av.atualizado === false ? ' · assinaturas desatualizadas' : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Programas instalados */}
+          {a.softwares?.length > 0 && (
+            <section className="card">
+              <button
+                className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-slate-50"
+                onClick={() => setShowSoftware((v) => !v)}
+              >
+                {showSoftware ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                <h2 className="text-sm font-bold">Programas instalados</h2>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{a.softwares.length}</span>
+              </button>
+              {showSoftware && (
+                <div className="max-h-96 overflow-y-auto border-t border-slate-100">
+                  <table className="w-full">
+                    <thead className="sticky top-0 border-b border-slate-100 bg-slate-50"><tr>
+                      <th className="th">Programa</th><th className="th">Versão</th><th className="th">Fabricante</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {a.softwares.map((s: any) => (
+                        <tr key={s.id}>
+                          <td className="td">{s.name}</td>
+                          <td className="td text-xs text-slate-500">{s.version ?? '—'}</td>
+                          <td className="td max-w-48 truncate text-xs text-slate-400">{s.publisher ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Componentes */}
           <section className="card">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
@@ -362,6 +542,50 @@ export default function AtivoDetalhe() {
                 onClick={() => importComponents.mutate()}
               >
                 {importComponents.isPending ? 'Importando…' : 'Importar'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {linkModal && (
+        <Modal title="Vincular a cadastro existente" onClose={() => setLinkModal(false)}>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Procure o cadastro que corresponde a esta máquina. A coleta (hostname, série, configuração e programas)
+              passa para ele, e este registro duplicado é inativado — nada é apagado.
+            </p>
+            <Field label="Buscar por código, patrimônio ou descrição" required>
+              <input
+                className="input"
+                autoFocus
+                value={linkSearch}
+                onChange={(e) => { setLinkSearch(e.target.value); setLinkTarget(''); }}
+                placeholder="Ex.: 1095, ATI-2026-000029, Sala Ronildo…"
+              />
+            </Field>
+            {linkSearch.length >= 2 && (
+              <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200">
+                {(linkOptions?.items ?? []).filter((o) => o.id !== id).map((o) => (
+                  <button
+                    key={o.id}
+                    className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${linkTarget === o.id ? 'bg-brand-50 font-medium' : ''}`}
+                    onClick={() => setLinkTarget(o.id)}
+                  >
+                    {o.code} — {o.description}
+                    {o.patrimonyCode && <span className="text-xs text-slate-400"> · patr. {o.patrimonyCode}</span>}
+                  </button>
+                ))}
+                {(linkOptions?.items ?? []).filter((o) => o.id !== id).length === 0 && (
+                  <p className="px-3 py-3 text-xs text-slate-400">Nenhum cadastro encontrado.</p>
+                )}
+              </div>
+            )}
+            <ErrorText error={linkDiscovered.error} />
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => setLinkModal(false)}>Cancelar</button>
+              <button className="btn-primary" disabled={!linkTarget || linkDiscovered.isPending} onClick={() => linkDiscovered.mutate()}>
+                {linkDiscovered.isPending ? 'Vinculando…' : 'Vincular'}
               </button>
             </div>
           </div>

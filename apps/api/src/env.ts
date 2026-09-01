@@ -20,6 +20,8 @@ export const env = {
   whatsappToken: process.env.WHATSAPP_TOKEN ?? '',
   whatsappPhoneId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? '',
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? 'gestao-ti-verify',
+  // Agente de inventário — sem token definido, a coleta automática fica desligada
+  agentToken: process.env.AGENT_TOKEN ?? '',
 };
 
 if (env.nodeEnv === 'production' && env.jwtSecret.startsWith('dev-')) {

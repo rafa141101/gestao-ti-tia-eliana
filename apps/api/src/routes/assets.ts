@@ -158,6 +158,118 @@ export async function assetRoutes(app: FastifyInstance) {
   });
 
   /** Visão de estoque de reserva. */
+  /** Equipamentos vistos na rede que ainda não estão no inventário. */
+  app.get('/network-discoveries', async (req) => {
+    const { includeIgnored } = req.query as { includeIgnored?: string };
+    return prisma.networkDiscovery.findMany({
+      where: includeIgnored === 'true' ? {} : { ignored: false },
+      orderBy: { lastSeen: 'desc' },
+      take: 300,
+    });
+  });
+
+  app.patch('/network-discoveries/:id', { preHandler: [app.requirePermission('inventory.register')] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const data = z.object({ ignored: z.boolean().optional(), notes: z.string().nullable().optional() }).parse(req.body);
+    const updated = await prisma.networkDiscovery.update({ where: { id }, data });
+    await audit({ userId: req.authUser.id, action: 'EDICAO', entity: 'network_discoveries', entityId: id, req, after: data });
+    return updated;
+  });
+
+  /**
+   * Vincula um ativo descoberto pelo agente a um cadastro já existente:
+   * transfere a coleta (hostname, serial, MAC, specs, softwares) para o
+   * cadastro correto e inativa o duplicado. Evita cadastro em dobro quando
+   * o agente não conseguiu casar sozinho.
+   */
+  app.post('/:id/link-discovered', { preHandler: [app.requirePermission('inventory.register')] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const { targetAssetId } = z.object({ targetAssetId: z.string().uuid() }).parse(req.body);
+    if (id === targetAssetId) throw new AppError('Selecione um ativo diferente.', 400);
+
+    const [discovered, target] = await Promise.all([
+      prisma.asset.findUnique({ where: { id }, include: { softwares: true } }),
+      prisma.asset.findUnique({ where: { id: targetAssetId } }),
+    ]);
+    if (!discovered) throw new AppError('Ativo descoberto não encontrado.', 404);
+    if (!target) throw new AppError('Ativo de destino não encontrado.', 404);
+    if (!discovered.discoveredByAgent) {
+      throw new AppError('Só ativos descobertos pelo agente podem ser vinculados desta forma.', 400);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Passa a coleta para o cadastro correto
+      await tx.asset.update({
+        where: { id: targetAssetId },
+        data: {
+          hostname: discovered.hostname,
+          ip: discovered.ip,
+          mac: discovered.mac,
+          os: discovered.os,
+          specs: (discovered.specs ?? undefined) as Prisma.InputJsonValue | undefined,
+          lastSeenAt: discovered.lastSeenAt,
+          agentVersion: discovered.agentVersion,
+          serialNumber: target.serialNumber ?? discovered.serialNumber,
+          brand: target.brand ?? discovered.brand,
+          model: target.model ?? discovered.model,
+        },
+      });
+      // Move a lista de programas instalados
+      await tx.assetSoftware.deleteMany({ where: { assetId: targetAssetId } });
+      if (discovered.softwares.length > 0) {
+        await tx.assetSoftware.createMany({
+          data: discovered.softwares.map((s) => ({
+            assetId: targetAssetId,
+            name: s.name,
+            version: s.version,
+            publisher: s.publisher,
+            installedAt: s.installedAt,
+            collectedAt: s.collectedAt,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      // A lista de programas foi transferida — não deixa cópia no duplicado
+      await tx.assetSoftware.deleteMany({ where: { assetId: id } });
+      // Inativa o duplicado (nunca apaga — mantém rastro)
+      await tx.asset.update({
+        where: { id },
+        data: {
+          active: false,
+          status: 'INATIVO',
+          notes: `${discovered.notes ?? ''}\nVinculado ao cadastro ${target.code} em ${new Date().toLocaleString('pt-BR')}.`.trim(),
+        },
+      });
+    });
+
+    await audit({
+      userId: req.authUser.id, action: 'VINCULO_DESCOBERTO', entity: 'assets', entityId: targetAssetId, req,
+      before: { descoberto: discovered.code }, after: { vinculadoA: target.code },
+    });
+    return { ok: true, targetCode: target.code };
+  });
+
+  /** Máquinas com coleta automática: online, sem contato recente e nunca vistas. */
+  app.get('/agent-status', async () => {
+    const cutoff = new Date(Date.now() - 24 * 3600_000);
+    const [online, semContato, semAgente] = await Promise.all([
+      prisma.asset.findMany({
+        where: { active: true, lastSeenAt: { gte: cutoff } },
+        select: { id: true, code: true, description: true, hostname: true, ip: true, lastSeenAt: true, specs: true },
+        orderBy: { lastSeenAt: 'desc' },
+      }),
+      prisma.asset.findMany({
+        where: { active: true, lastSeenAt: { not: null, lt: cutoff } },
+        select: { id: true, code: true, description: true, hostname: true, ip: true, lastSeenAt: true },
+        orderBy: { lastSeenAt: 'asc' },
+      }),
+      prisma.asset.count({
+        where: { active: true, lastSeenAt: null, category: { name: { in: ['Computador', 'Notebook', 'Servidor'] } } },
+      }),
+    ]);
+    return { online, semContato, semAgente };
+  });
+
   app.get('/reserve', async () => {
     const reserve = await prisma.asset.findMany({
       where: { active: true, status: { in: ['RESERVA', 'DISPONIVEL', 'EM_MANUTENCAO', 'AGUARDANDO_PECA'] } },
@@ -231,6 +343,7 @@ export async function assetRoutes(app: FastifyInstance) {
         },
         tickets: { select: { id: true, number: true, title: true, status: true, openedAt: true }, orderBy: { openedAt: 'desc' }, take: 20 },
         attachments: true,
+        softwares: { orderBy: { name: 'asc' } },
       },
     });
     if (!asset) throw new AppError('Ativo não encontrado.', 404);
@@ -239,7 +352,11 @@ export async function assetRoutes(app: FastifyInstance) {
 
   app.patch('/:id', { preHandler: [app.requirePermission('inventory.register')] }, async (req) => {
     const { id } = req.params as { id: string };
-    const data = assetSchema.partial().extend({ active: z.boolean().optional() }).parse(req.body);
+    const data = assetSchema.partial().extend({
+      active: z.boolean().optional(),
+      /// Marcar como conferido após revisar uma descoberta do agente
+      discoveredByAgent: z.boolean().optional(),
+    }).parse(req.body);
     const before = await prisma.asset.findUnique({ where: { id } });
     if (!before) throw new AppError('Ativo não encontrado.', 404);
 

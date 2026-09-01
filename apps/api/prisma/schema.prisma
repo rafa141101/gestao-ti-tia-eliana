@@ -887,8 +887,18 @@ model Asset {
   mac      String?
   os       String?
   hostname String?
-  /// Configuração técnica adicional (JSON livre)
+  /// Configuração técnica adicional (JSON livre).
+  /// O agente de inventário preenche aqui: processador, memória, discos,
+  /// espaço livre, antivírus, BIOS e data da última inicialização.
   specs    Json?
+
+  /// --- Coleta automática (agente de inventário) ---
+  /// Último contato do agente. Vazio = nunca reportou (cadastro manual).
+  lastSeenAt   DateTime?
+  agentVersion String?
+  /// Criado pelo agente sem casar com nenhum cadastro existente — precisa de
+  /// conferência do inventariante (pode ser máquina nova ou duplicata).
+  discoveredByAgent Boolean @default(false)
 
   /// Para consumíveis/kits: quantidade e estoque mínimo
   quantity Int  @default(1)
@@ -907,10 +917,13 @@ model Asset {
   maintenances MaintenanceRecord[]
   tickets      Ticket[]
   attachments  Attachment[]
+  softwares    AssetSoftware[]
 
   @@index([status])
   @@index([unitId])
   @@index([categoryId])
+  @@index([hostname])
+  @@index([lastSeenAt])
   @@map("assets")
 }
 
@@ -936,6 +949,44 @@ model AssetComponent {
 
   @@index([assetId])
   @@map("asset_components")
+}
+
+/// Software instalado, coletado automaticamente pelo agente de inventário.
+/// Substituído por completo a cada coleta (retrato do momento), por isso não
+/// entra nas travas de imutabilidade — não é registro operacional/histórico.
+model AssetSoftware {
+  id        String   @id @default(uuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  name      String
+  version   String?
+  publisher String?
+  installedAt DateTime?
+  collectedAt DateTime @default(now())
+
+  @@unique([assetId, name, version])
+  @@index([assetId])
+  @@index([name])
+  @@map("asset_softwares")
+}
+
+/// Equipamentos vistos na rede pela varredura, ainda sem cadastro no inventário.
+/// Some da lista quando o ativo correspondente é cadastrado.
+model NetworkDiscovery {
+  id        String   @id @default(uuid())
+  ip        String
+  mac       String?
+  hostname  String?
+  vendor    String?
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @default(now())
+  /// Marcado como ignorado pelo inventariante (impressora de terceiro, celular etc.)
+  ignored   Boolean  @default(false)
+  notes     String?
+
+  @@unique([ip, mac])
+  @@index([lastSeen])
+  @@map("network_discoveries")
 }
 
 model AssetMovement {
