@@ -17,7 +17,7 @@ export default function CategoriasSla() {
   const { data: slaPolicies } = useQuery({ queryKey: ['sla-policies'], queryFn: () => api.get<any[]>('/api/catalog/sla-policies') });
   const { data: holidays } = useQuery({ queryKey: ['holidays'], queryFn: () => api.get<any[]>('/api/catalog/holidays') });
 
-  const [catForm, setCatForm] = useState({ name: '', description: '', slaPolicyId: '' });
+  const [catForm, setCatForm] = useState({ name: '', description: '', slaPolicyId: '', triageKeywords: '' });
   const [subName, setSubName] = useState('');
   const [slaForm, setSlaForm] = useState({
     name: '', mode: 'COMERCIAL', businessStart: '08:00', businessEnd: '18:00', workdays: '1,2,3,4,5',
@@ -27,9 +27,17 @@ export default function CategoriasSla() {
   const [holidayForm, setHolidayForm] = useState({ date: '', name: '' });
 
   const saveCat = useMutation({
-    mutationFn: () => catModal?.id
-      ? api.patch(`/api/catalog/categories/${catModal.id}`, { name: catForm.name, description: catForm.description || undefined, slaPolicyId: catForm.slaPolicyId || null })
-      : api.post('/api/catalog/categories', { name: catForm.name, description: catForm.description || undefined, slaPolicyId: catForm.slaPolicyId || null }),
+    mutationFn: () => {
+      const payload = {
+        name: catForm.name,
+        description: catForm.description || undefined,
+        slaPolicyId: catForm.slaPolicyId || null,
+        triageKeywords: catForm.triageKeywords.split(',').map((k) => k.trim()).filter(Boolean),
+      };
+      return catModal?.id
+        ? api.patch(`/api/catalog/categories/${catModal.id}`, payload)
+        : api.post('/api/catalog/categories', payload);
+    },
     onSuccess: () => { setCatModal(null); qc.invalidateQueries({ queryKey: ['categories'] }); },
   });
   const saveSub = useMutation({
@@ -57,7 +65,7 @@ export default function CategoriasSla() {
         <section className="card">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <h2 className="text-sm font-bold">Categorias de chamado</h2>
-            <button className="btn-secondary !py-1 text-xs" onClick={() => { setCatForm({ name: '', description: '', slaPolicyId: '' }); setCatModal({}); }}>
+            <button className="btn-secondary !py-1 text-xs" onClick={() => { setCatForm({ name: '', description: '', slaPolicyId: '', triageKeywords: '' }); setCatModal({}); }}>
               <Plus className="h-3.5 w-3.5" /> Categoria
             </button>
           </div>
@@ -65,9 +73,13 @@ export default function CategoriasSla() {
             {(categories ?? []).map((c) => (
               <li key={c.id} className="px-4 py-2.5">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{c.name}{c.formSchema && <span className="ml-2 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">formulário</span>}</p>
+                  <p className="text-sm font-medium">
+                    {c.name}
+                    {c.formSchema && <span className="ml-2 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">formulário</span>}
+                    {c.triageKeywords?.length > 0 && <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">triagem WhatsApp</span>}
+                  </p>
                   <div className="space-x-2 text-xs">
-                    <button className="text-brand-600 hover:underline" onClick={() => { setCatForm({ name: c.name, description: c.description ?? '', slaPolicyId: c.slaPolicyId ?? '' }); setCatModal({ id: c.id }); }}>Editar</button>
+                    <button className="text-brand-600 hover:underline" onClick={() => { setCatForm({ name: c.name, description: c.description ?? '', slaPolicyId: c.slaPolicyId ?? '', triageKeywords: (c.triageKeywords ?? []).join(', ') }); setCatModal({ id: c.id }); }}>Editar</button>
                     <button className="text-slate-500 hover:underline" onClick={() => setSubModal(c.id)}>+ subcategoria</button>
                   </div>
                 </div>
@@ -128,6 +140,13 @@ export default function CategoriasSla() {
                 <option value="">Usar padrão</option>
                 {(slaPolicies ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
+            </Field>
+            <Field label="Palavras-chave para triagem automática do WhatsApp (separe por vírgula)">
+              <input className="input" placeholder="ex.: impressora, imprimir, impressão" value={catForm.triageKeywords} onChange={(e) => setCatForm({ ...catForm, triageKeywords: e.target.value })} />
+              <p className="mt-1 text-xs text-slate-400">
+                Se a mensagem recebida pelo WhatsApp contiver uma dessas palavras, o chamado já nasce nesta categoria.
+                Categorias sem nenhuma palavra-chave não entram no menu automático de triagem.
+              </p>
             </Field>
             <ErrorText error={saveCat.error} />
             <div className="flex justify-end"><button className="btn-primary" disabled={saveCat.isPending || catForm.name.length < 2} onClick={() => saveCat.mutate()}>Salvar</button></div>

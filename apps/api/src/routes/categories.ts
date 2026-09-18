@@ -21,6 +21,7 @@ const categorySchema = z.object({
   responseTemplate: z.string().nullable().optional(),
   requiresApproval: z.boolean().optional(),
   active: z.boolean().optional(),
+  triageKeywords: z.array(z.string().min(1)).optional(),
 });
 
 const slaPolicySchema = z.object({

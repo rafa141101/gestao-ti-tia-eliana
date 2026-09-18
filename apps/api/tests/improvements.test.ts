@@ -139,6 +139,99 @@ describe('Webhook WhatsApp', () => {
   });
 });
 
+describe('Triagem automática do WhatsApp (palavra-chave + menu)', () => {
+  let categoriaTriagem: { id: string; name: string };
+
+  beforeAll(async () => {
+    const existing = await prisma.category.findFirst({ where: { name: 'Servidor de Triagem (teste)' } });
+    categoriaTriagem = existing
+      ? await prisma.category.update({ where: { id: existing.id }, data: { active: true } })
+      : await prisma.category.create({
+          data: { name: 'Servidor de Triagem (teste)', slaPolicyId: fx.slaPolicyId, triageKeywords: ['servidor-triagem-teste', 'servidor caiu triagem'] },
+        });
+  });
+
+  afterAll(async () => {
+    await prisma.category.update({ where: { id: categoriaTriagem.id }, data: { active: false } });
+  });
+
+  const send = (phone: string, text: string) => app.inject({
+    method: 'POST', url: '/api/integrations/whatsapp/webhook',
+    payload: {
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: env.whatsappPhoneId },
+        contacts: [{ profile: { name: 'Testador Triagem' } }],
+        messages: [{ from: phone, type: 'text', text: { body: text } }],
+      } }] }],
+    },
+  });
+
+  it('palavra-chave bate: chamado nasce direto na categoria, sem menu', async () => {
+    const phone = '5531966660001';
+    const res = await send(phone, 'o servidor-triagem-teste está com problema');
+    expect(res.statusCode).toBe(200);
+
+    const ticket = await prisma.ticket.findFirst({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+    expect(ticket).toBeTruthy();
+    expect(ticket!.categoryId).toBe(categoriaTriagem.id);
+
+    const pending = await prisma.whatsAppPendingTriage.findUnique({ where: { phone } });
+    expect(pending).toBeNull();
+  });
+
+  it('palavra de urgência eleva a urgência/prioridade do chamado', async () => {
+    const phone = '5531966660002';
+    await send(phone, 'servidor-triagem-teste parou tudo, urgente');
+
+    const ticket = await prisma.ticket.findFirst({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+    expect(ticket!.urgency).toBe('ATIVIDADE_BLOQUEADA');
+  });
+
+  it('sem palavra-chave: manda menu e espera a escolha antes de criar o chamado', async () => {
+    const phone = '5531966660003';
+    const first = await send(phone, 'Preciso de ajuda com uma coisa aqui');
+    expect(first.statusCode).toBe(200);
+
+    // Ainda não deve ter criado chamado — está esperando a escolha do menu.
+    const noTicketYet = await prisma.ticket.findFirst({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+    expect(noTicketYet).toBeNull();
+
+    const pending = await prisma.whatsAppPendingTriage.findUnique({ where: { phone } });
+    expect(pending).toBeTruthy();
+    const options = pending!.options as unknown as { n: number; categoryId: string; label: string }[];
+    const chosen = options.find((o) => o.categoryId === categoriaTriagem.id);
+    expect(chosen).toBeTruthy();
+
+    // Responde com o número da opção certa.
+    const second = await send(phone, String(chosen!.n));
+    expect(second.statusCode).toBe(200);
+
+    const ticket = await prisma.ticket.findFirst({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+    expect(ticket).toBeTruthy();
+    expect(ticket!.categoryId).toBe(categoriaTriagem.id);
+    expect(ticket!.description).toContain('Preciso de ajuda com uma coisa aqui');
+
+    const pendingAfter = await prisma.whatsAppPendingTriage.findUnique({ where: { phone } });
+    expect(pendingAfter).toBeNull();
+  });
+
+  it('resposta inválida ao menu: cai na categoria padrão em vez de travar', async () => {
+    const phone = '5531966660004';
+    await send(phone, 'Outra dúvida qualquer sem palavra-chave conhecida');
+    const pending = await prisma.whatsAppPendingTriage.findUnique({ where: { phone } });
+    expect(pending).toBeTruthy();
+
+    await send(phone, 'não entendi o menu, pode me ligar?');
+
+    const ticket = await prisma.ticket.findFirst({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+    expect(ticket).toBeTruthy();
+    expect(ticket!.categoryId).not.toBe(categoriaTriagem.id);
+
+    const pendingAfter = await prisma.whatsAppPendingTriage.findUnique({ where: { phone } });
+    expect(pendingAfter).toBeNull();
+  });
+});
+
 describe('Auditoria automática (mutação sem audit explícito)', () => {
   it('gera registro AUTO_* para rota que não audita', async () => {
     const created = await app.inject({

@@ -5,7 +5,7 @@ import { notifyUser, notifyRoles } from '../lib/notify.js';
 import { nextTicketNumber } from '../lib/numbers.js';
 import { generatePublicId } from '../lib/numbers.js';
 import { addSlaMinutes, slaMinutesFor } from '../lib/sla.js';
-import { computePriority } from '@gestao-ti/shared';
+import { computePriority, type Urgency } from '@gestao-ti/shared';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -34,6 +34,26 @@ function samePhone(a: string, b: string): boolean {
   const db = digitsOf(b);
   if (da.length < 8 || db.length < 8) return false;
   return da.slice(-8) === db.slice(-8);
+}
+
+/** Remove acentos e caixa para comparação de palavra-chave tolerante. */
+function normalize(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Palavras que indicam urgência alta, independente da categoria — lista fixa
+ * (não configurável pelo admin, ao contrário das palavras-chave de categoria).
+ */
+const URGENT_KEYWORDS = [
+  'urgente', 'urgencia', 'parou', 'parado', 'parada', 'nao funciona', 'nao consigo',
+  'ninguem consegue', 'loja toda', 'sistema caiu', 'caiu o sistema', 'sem internet',
+  'nao vende', 'nao consegue vender', 'travou tudo', 'parou tudo',
+];
+
+function urgencyFor(text: string): Urgency {
+  const norm = normalize(text);
+  return URGENT_KEYWORDS.some((k) => norm.includes(k)) ? 'ATIVIDADE_BLOQUEADA' : 'PARCIALMENTE_PREJUDICADA';
 }
 
 /** Envia texto pela janela de serviço. Nunca lança — falha vira log. */
@@ -76,7 +96,7 @@ async function whatsappSystemUser() {
   });
 }
 
-async function categoryForWhatsApp() {
+async function defaultCategoryForWhatsApp() {
   const setting = await prisma.systemSetting.findUnique({ where: { key: 'whatsappCategoryId' } });
   if (typeof setting?.value === 'string') {
     const byId = await prisma.category.findFirst({ where: { id: setting.value, active: true } });
@@ -88,11 +108,100 @@ async function categoryForWhatsApp() {
   );
 }
 
+/** Categorias configuradas para triagem automática (têm ao menos uma palavra-chave). */
+async function categoriesForTriage() {
+  return prisma.category.findMany({
+    where: { active: true, triageKeywords: { isEmpty: false } },
+    orderBy: { name: 'asc' },
+  });
+}
+
+/** Acha a primeira categoria cuja palavra-chave aparece no texto. */
+function matchCategoryByKeyword<T extends { triageKeywords: string[] }>(text: string, categories: T[]): T | null {
+  const norm = normalize(text);
+  return categories.find((c) => c.triageKeywords.some((k) => norm.includes(normalize(k)))) ?? null;
+}
+
+interface MenuOption { n: number; categoryId: string; label: string }
+
+function buildMenu(categories: { id: string; name: string }[]): { text: string; options: MenuOption[] } {
+  const options: MenuOption[] = categories.map((c, i) => ({ n: i + 1, categoryId: c.id, label: c.name }));
+  const lines = options.map((o) => `${o.n}) ${o.label}`).join('\n');
+  return {
+    text: `Para agilizar seu atendimento, escolha o assunto abaixo (responda só com o número):\n\n${lines}`,
+    options,
+  };
+}
+
+interface NewTicketInput {
+  phone: string;
+  matched: { id: string; name: string; unitId: string | null; departmentId: string | null } | null | undefined;
+  profileName?: string;
+  messageText: string;
+  category: { id: string; defaultQueueId: string | null };
+}
+
+/** Cria o chamado a partir de uma mensagem já triada (categoria já decidida). */
+async function createTicketFromWhatsApp({ phone, matched, profileName, messageText, category }: NewTicketInput) {
+  const requester = matched ?? (await whatsappSystemUser());
+  const impact = 'UMA_PESSOA' as const;
+  const urgency = urgencyFor(messageText);
+  const priority = computePriority(impact, urgency);
+  const policy = await prisma.slaPolicy.findFirst({ where: { isDefault: true, active: true } });
+  const holidays = policy ? (await prisma.holiday.findMany()).map((h) => h.date) : [];
+  const now = new Date();
+
+  const firstLine = messageText.trim().split('\n')[0].slice(0, 70);
+  const ticket = await prisma.$transaction(async (tx) => {
+    const number = await nextTicketNumber(tx, now);
+    const t = await tx.ticket.create({
+      data: {
+        number,
+        title: `[WhatsApp] ${firstLine}`,
+        description: `Mensagem recebida pelo WhatsApp de ${profileName ?? 'contato'} (${phone}):\n\n${messageText}`,
+        requesterId: requester.id,
+        unitId: matched?.unitId ?? null,
+        departmentId: matched?.departmentId ?? null,
+        categoryId: category.id,
+        channel: 'WHATSAPP',
+        impact,
+        urgency,
+        calculatedPriority: priority,
+        priority,
+        contactPhone: phone,
+        queueId: category.defaultQueueId ?? null,
+        slaPolicyId: policy?.id ?? null,
+        firstResponseDueAt: policy ? addSlaMinutes(now, slaMinutesFor(policy, priority).firstResponse, policy, holidays) : null,
+        resolutionDueAt: policy ? addSlaMinutes(now, slaMinutesFor(policy, priority).resolution, policy, holidays) : null,
+      },
+    });
+    await tx.ticketEvent.create({
+      data: { ticketId: t.id, type: 'CRIACAO', toValue: 'NOVO', comment: `Recebido pelo WhatsApp (${phone})` },
+    });
+    return t;
+  });
+
+  await audit({ action: 'CRIACAO_WHATSAPP', entity: 'tickets', entityId: ticket.id, origin: 'whatsapp', after: { number: ticket.number, from: phone } });
+  await notifyRoles(['GESTOR_TI', 'TECNICO'], 'chamado_criado', `Chamado via WhatsApp: ${ticket.number}`, firstLine, 'tickets', ticket.id);
+  await sendWhatsAppText(
+    phone,
+    `Olá${matched ? `, ${matched.name.split(' ')[0]}` : ''}! Seu chamado *${ticket.number}* foi registrado na TI. ` +
+    'Você receberá retorno por aqui. Para acrescentar informações, é só responder esta conversa.',
+  );
+}
+
 /**
  * Processa uma mensagem recebida.
  * Regra da janela (definida na reunião): mensagem de um número com chamado
  * WhatsApp aberto e movimentado nas últimas 24h entra como resposta no mesmo
  * chamado; caso contrário abre chamado novo e responde com o número.
+ *
+ * Triagem automática: mensagem nova é comparada às palavras-chave das
+ * categorias (configuráveis em Categorias e SLA). Se bater, o chamado já
+ * nasce na categoria certa. Se não bater e existir alguma categoria
+ * configurada, manda um menu numerado e espera a escolha antes de criar o
+ * chamado; sem categoria configurada nenhuma, mantém o comportamento antigo
+ * (categoria padrão direto).
  */
 export async function processIncomingWhatsApp(from: string, text: string, profileName?: string): Promise<void> {
   const phone = digitsOf(from);
@@ -138,55 +247,52 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
     return;
   }
 
-  // Chamado novo
-  const requester = matched ?? (await whatsappSystemUser());
-  const category = await categoryForWhatsApp();
+  // Resposta a um menu de triagem pendente?
+  const pending = await prisma.whatsAppPendingTriage.findUnique({ where: { phone } });
+  if (pending) {
+    await prisma.whatsAppPendingTriage.delete({ where: { phone } });
+    const options = pending.options as unknown as MenuOption[];
+    const chosenN = Number(text.trim().match(/\d+/)?.[0]);
+    const chosen = options.find((o) => o.n === chosenN);
+    const category = chosen
+      ? await prisma.category.findFirst({ where: { id: chosen.categoryId, active: true } })
+      : null;
+    const finalCategory = category ?? (await defaultCategoryForWhatsApp());
+    if (!finalCategory) {
+      console.error('[whatsapp] nenhuma categoria ativa para abrir chamado');
+      return;
+    }
+    await createTicketFromWhatsApp({
+      phone, matched, profileName,
+      messageText: pending.firstMessage,
+      category: finalCategory,
+    });
+    return;
+  }
+
+  // Chamado novo — tenta triagem automática por palavra-chave.
+  const triageCategories = await categoriesForTriage();
+  const keywordMatch = matchCategoryByKeyword(text, triageCategories);
+  if (keywordMatch) {
+    await createTicketFromWhatsApp({ phone, matched, profileName, messageText: text, category: keywordMatch });
+    return;
+  }
+
+  // Nenhuma palavra-chave bateu: se existe categoria configurada, manda o menu e espera.
+  if (triageCategories.length > 0) {
+    const menu = buildMenu(triageCategories);
+    await prisma.whatsAppPendingTriage.create({
+      data: { phone, firstMessage: text, profileName, options: menu.options as unknown as object },
+    });
+    await sendWhatsAppText(phone, menu.text);
+    return;
+  }
+
+  // Nenhuma categoria configurada para triagem: comportamento padrão de sempre.
+  const category = await defaultCategoryForWhatsApp();
   if (!category) {
     console.error('[whatsapp] nenhuma categoria ativa para abrir chamado');
     return;
   }
-  const impact = 'UMA_PESSOA' as const;
-  const urgency = 'PARCIALMENTE_PREJUDICADA' as const;
-  const priority = computePriority(impact, urgency);
-  const policy = await prisma.slaPolicy.findFirst({ where: { isDefault: true, active: true } });
-  const holidays = policy ? (await prisma.holiday.findMany()).map((h) => h.date) : [];
-  const now = new Date();
-
-  const firstLine = text.trim().split('\n')[0].slice(0, 70);
-  const ticket = await prisma.$transaction(async (tx) => {
-    const number = await nextTicketNumber(tx, now);
-    const t = await tx.ticket.create({
-      data: {
-        number,
-        title: `[WhatsApp] ${firstLine}`,
-        description: `Mensagem recebida pelo WhatsApp de ${profileName ?? 'contato'} (${phone}):\n\n${text}`,
-        requesterId: requester.id,
-        unitId: matched?.unitId ?? null,
-        departmentId: matched?.departmentId ?? null,
-        categoryId: category.id,
-        channel: 'WHATSAPP',
-        impact,
-        urgency,
-        calculatedPriority: priority,
-        priority,
-        contactPhone: phone,
-        queueId: category.defaultQueueId ?? null,
-        slaPolicyId: policy?.id ?? null,
-        firstResponseDueAt: policy ? addSlaMinutes(now, slaMinutesFor(policy, priority).firstResponse, policy, holidays) : null,
-        resolutionDueAt: policy ? addSlaMinutes(now, slaMinutesFor(policy, priority).resolution, policy, holidays) : null,
-      },
-    });
-    await tx.ticketEvent.create({
-      data: { ticketId: t.id, type: 'CRIACAO', toValue: 'NOVO', comment: `Recebido pelo WhatsApp (${phone})` },
-    });
-    return t;
-  });
-
-  await audit({ action: 'CRIACAO_WHATSAPP', entity: 'tickets', entityId: ticket.id, origin: 'whatsapp', after: { number: ticket.number, from: phone } });
-  await notifyRoles(['GESTOR_TI', 'TECNICO'], 'chamado_criado', `Chamado via WhatsApp: ${ticket.number}`, firstLine, 'tickets', ticket.id);
-  await sendWhatsAppText(
-    phone,
-    `Olá${matched ? `, ${matched.name.split(' ')[0]}` : ''}! Seu chamado *${ticket.number}* foi registrado na TI. ` +
-    'Você receberá retorno por aqui. Para acrescentar informações, é só responder esta conversa.',
-  );
+  await createTicketFromWhatsApp({ phone, matched, profileName, messageText: text, category });
 }

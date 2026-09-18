@@ -13,5 +13,11 @@ export default defineConfig({
     },
     testTimeout: 30_000,
     hookTimeout: 60_000,
+    // Todos os arquivos de teste compartilham o mesmo banco Postgres — rodar em
+    // paralelo abre espaço pra estado global de um arquivo vazar pro outro
+    // (já vimos isso com a criação de fixtures e com categorias de triagem do
+    // WhatsApp). Sequencial evita essa classe de flakiness; a suíte ainda é
+    // rápida o bastante pra isso não doer.
+    fileParallelism: false,
   },
 });

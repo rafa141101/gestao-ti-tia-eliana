@@ -384,11 +384,28 @@ model Category {
   requiresApproval Boolean  @default(false)
   active           Boolean  @default(true)
   createdAt        DateTime @default(now())
+  /// Palavras-chave para triagem automática do WhatsApp (case-insensitive).
+  /// Categoria só entra no menu/triagem automática se tiver ao menos uma.
+  triageKeywords   String[] @default([])
 
   subcategories Subcategory[]
   tickets       Ticket[]
 
   @@map("categories")
+}
+
+/// Estado transitório de uma conversa de WhatsApp aguardando o cliente escolher
+/// a categoria pelo menu numerado (triagem automática). Não é dado de negócio —
+/// não entra na auditoria nem nos gatilhos de imutabilidade.
+model WhatsAppPendingTriage {
+  phone        String   @id
+  firstMessage String
+  profileName  String?
+  /// [{ n: number, categoryId: string, label: string }]
+  options      Json
+  createdAt    DateTime @default(now())
+
+  @@map("whatsapp_pending_triage")
 }
 
 model Subcategory {
