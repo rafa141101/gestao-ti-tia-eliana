@@ -562,7 +562,7 @@ export async function ticketRoutes(app: FastifyInstance) {
         // Chamado veio do WhatsApp: resposta pública da TI é entregue na conversa (janela de serviço, sem custo)
         if (ticket.channel === 'WHATSAPP') {
           const requester = await prisma.user.findUnique({ where: { id: ticket.requesterId }, select: { phone: true } });
-          void sendWhatsAppText(ticket.contactPhone ?? requester?.phone, `*${ticket.number}* — ${u.name}:\n${body}`);
+          void sendWhatsAppText(ticket.contactPhone ?? requester?.phone, `${u.name.split(' ')[0]}: ${body}`);
         }
       } else if (ticket.assigneeId) {
         await notifyUser(ticket.assigneeId, 'chamado_resposta', `${u.name} respondeu o chamado ${ticket.number}`, body.slice(0, 120), 'tickets', id);
