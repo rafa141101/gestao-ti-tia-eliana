@@ -22,6 +22,7 @@ interface WebhookBody {
   entry?: {
     changes?: {
       value?: {
+        metadata?: { phone_number_id?: string };
         messages?: WebhookMessage[];
         contacts?: { profile?: { name?: string } }[];
       };
@@ -66,6 +67,10 @@ export async function whatsappRoutes(app: FastifyInstance) {
       for (const entry of body.entry ?? []) {
         for (const change of entry.changes ?? []) {
           const value = change.value;
+          // A Meta envia eventos de TODOS os números WhatsApp da conta Business para o
+          // mesmo webhook — sem esse filtro, mensagens de outros números (ex.: comercial)
+          // viravam chamado de TI por engano.
+          if (value?.metadata?.phone_number_id !== env.whatsappPhoneId) continue;
           const profileName = value?.contacts?.[0]?.profile?.name;
           for (const message of value?.messages ?? []) {
             if (message.type === 'text' && message.from && message.text?.body) {

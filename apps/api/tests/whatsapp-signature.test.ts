@@ -3,9 +3,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
 process.env.WHATSAPP_APP_SECRET = 'segredo-de-teste-app-secret';
+process.env.WHATSAPP_PHONE_NUMBER_ID = 'phone-id-de-teste';
 
 // Import dinâmico: `import` estático é içado para o topo do módulo em ESM e rodaria
-// antes da linha acima, fazendo env.js ler WHATSAPP_APP_SECRET vazio.
+// antes das linhas acima, fazendo env.js ler as variáveis vazias.
 const { buildApp } = await import('../src/app.js');
 const { prisma } = await import('../src/db.js');
 const { createFixtures } = await import('./helpers.js');
@@ -22,6 +23,7 @@ const webhookPayload = (from: string, text: string) => ({
   entry: [{
     changes: [{
       value: {
+        metadata: { phone_number_id: 'phone-id-de-teste' },
         contacts: [{ profile: { name: 'Renata da Loja' } }],
         messages: [{ from, type: 'text', text: { body: text } }],
       },

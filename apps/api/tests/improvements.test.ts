@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { prisma } from '../src/db.js';
+import { env } from '../src/env.js';
 import { createFixtures, login, auth, type Fixtures } from './helpers.js';
 
 let app: FastifyInstance;
@@ -72,6 +73,7 @@ describe('Webhook WhatsApp', () => {
     entry: [{
       changes: [{
         value: {
+          metadata: { phone_number_id: env.whatsappPhoneId },
           contacts: [{ profile: { name: 'Renata da Loja' } }],
           messages: [{ from, type: 'text', text: { body: text } }],
         },
@@ -114,6 +116,26 @@ describe('Webhook WhatsApp', () => {
 
     const comments = await prisma.ticketComment.count({ where: { ticketId: ticket!.id } });
     expect(comments).toBe(1);
+  });
+
+  it('ignora mensagem destinada a outro número da conta Business (não abre chamado)', async () => {
+    const phone = '5531977776666';
+    const payload = {
+      entry: [{
+        changes: [{
+          value: {
+            metadata: { phone_number_id: 'outro-numero-nao-e-o-de-ti' },
+            contacts: [{ profile: { name: 'Cliente do Comercial' } }],
+            messages: [{ from: phone, type: 'text', text: { body: 'Quanto custa o produto X?' } }],
+          },
+        }],
+      }],
+    };
+    const res = await app.inject({ method: 'POST', url: '/api/integrations/whatsapp/webhook', payload });
+    expect(res.statusCode).toBe(200);
+
+    const ticket = await prisma.ticket.findFirst({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+    expect(ticket).toBeNull();
   });
 });
 
