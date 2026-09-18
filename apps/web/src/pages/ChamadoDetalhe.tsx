@@ -26,6 +26,8 @@ export default function ChamadoDetalhe() {
   const { data: t, isLoading, error } = useQuery({
     queryKey: ['ticket', id],
     queryFn: () => api.get<Record<string, any>>(`/api/tickets/${id}`),
+    // Mensagens do WhatsApp e ações de outras pessoas aparecem sem precisar de F5
+    refetchInterval: 8_000,
   });
 
   const [comment, setComment] = useState('');
@@ -39,6 +41,7 @@ export default function ChamadoDetalhe() {
   const [rateValue, setRateValue] = useState(0);
   const [stopModal, setStopModal] = useState(false);
   const [stopResult, setStopResult] = useState('');
+  const [alsoResolve, setAlsoResolve] = useState(false);
   const [stopNextStep, setStopNextStep] = useState('');
 
   const { data: running } = useQuery({
@@ -81,8 +84,11 @@ export default function ChamadoDetalhe() {
     onSuccess: invalidate,
   });
   const stopWork = useMutation({
-    mutationFn: () => api.post(`/api/worklogs/${running?.id}/stop`, { result: stopResult, nextStep: stopNextStep }),
-    onSuccess: () => { setStopModal(false); setStopResult(''); setStopNextStep(''); invalidate(); },
+    mutationFn: async () => {
+      await api.post(`/api/worklogs/${running?.id}/stop`, { result: stopResult, nextStep: stopNextStep });
+      if (alsoResolve) await api.post(`/api/tickets/${id}/status`, { status: 'RESOLVIDO', resolutionNotes: stopResult });
+    },
+    onSuccess: () => { setStopModal(false); setStopResult(''); setStopNextStep(''); setAlsoResolve(false); invalidate(); },
   });
   const confirmResolution = useMutation({
     mutationFn: () => api.post(`/api/tickets/${id}/confirm-resolution`),
@@ -476,10 +482,16 @@ export default function ChamadoDetalhe() {
             <Field label="Próximo passo (se houver)">
               <input className="input" value={stopNextStep} onChange={(e) => setStopNextStep(e.target.value)} placeholder="Ex.: devolver impressora para a expedição" />
             </Field>
+            {(TICKET_STATUS_TRANSITIONS[t.status as TicketStatus] ?? []).includes('RESOLVIDO') && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={alsoResolve} onChange={(e) => setAlsoResolve(e.target.checked)} />
+                Também marcar o chamado como <b>resolvido</b> (o resultado acima vira a solução)
+              </label>
+            )}
             <ErrorText error={stopWork.error} />
             <div className="flex justify-end gap-2">
               <button className="btn-secondary" onClick={() => setStopModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={() => stopWork.mutate()} disabled={stopWork.isPending}>Finalizar</button>
+              <button className="btn-primary" onClick={() => stopWork.mutate()} disabled={stopWork.isPending || (alsoResolve && !stopResult.trim())}>Finalizar</button>
             </div>
           </div>
         </Modal>
