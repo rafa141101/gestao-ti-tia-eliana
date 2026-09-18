@@ -239,7 +239,24 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
         isInternal: false,
       },
     });
-    await prisma.ticket.update({ where: { id: openTicket.id }, data: { updatedAt: new Date() } });
+    // Cliente respondeu num chamado já resolvido: o problema voltou — reabre (a mensagem de
+    // resolução enviada a ele promete exatamente isso).
+    if (openTicket.status === 'RESOLVIDO') {
+      await prisma.$transaction([
+        prisma.ticket.update({
+          where: { id: openTicket.id },
+          data: { status: 'EM_ATENDIMENTO', resolvedAt: null, closedAt: null, reopenedCount: openTicket.reopenedCount + 1, updatedAt: new Date() },
+        }),
+        prisma.ticketEvent.create({
+          data: {
+            ticketId: openTicket.id, type: 'REABERTURA', fromValue: 'RESOLVIDO', toValue: 'EM_ATENDIMENTO',
+            justification: 'Cliente respondeu pelo WhatsApp após a resolução',
+          },
+        }),
+      ]);
+    } else {
+      await prisma.ticket.update({ where: { id: openTicket.id }, data: { updatedAt: new Date() } });
+    }
     if (openTicket.assigneeId) {
       await notifyUser(openTicket.assigneeId, 'chamado_resposta', `WhatsApp: nova mensagem no ${openTicket.number}`, text.slice(0, 120), 'tickets', openTicket.id);
     }

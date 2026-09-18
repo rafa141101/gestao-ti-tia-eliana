@@ -160,7 +160,7 @@ export default function ChamadoDetalhe() {
                 </button>
               )
             )}
-            {isRequester && t.status === 'RESOLVIDO' && (
+            {(isRequester || can('tickets.manage')) && t.status === 'RESOLVIDO' && (
               <>
                 <button className="btn-primary" onClick={() => confirmResolution.mutate()}>Confirmar resolução</button>
                 <button className="btn-secondary" onClick={() => setReopenModal(true)}>Reabrir</button>

@@ -118,6 +118,24 @@ describe('Webhook WhatsApp', () => {
     expect(comments).toBe(1);
   });
 
+  it('mensagem do cliente num chamado resolvido reabre o chamado; em chamado fechado abre outro', async () => {
+    const phone = '5531955550001';
+    const post = (text: string) => app.inject({ method: 'POST', url: '/api/integrations/whatsapp/webhook', payload: webhookPayload(phone, text) });
+    await post('Meu monitor não liga');
+    const t1 = await prisma.ticket.findFirstOrThrow({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+
+    await prisma.ticket.update({ where: { id: t1.id }, data: { status: 'RESOLVIDO', resolvedAt: new Date() } });
+    await post('Continua sem ligar');
+    const reopened = await prisma.ticket.findUniqueOrThrow({ where: { id: t1.id } });
+    expect(reopened.status).toBe('EM_ATENDIMENTO');
+    expect(reopened.reopenedCount).toBe(1);
+
+    await prisma.ticket.update({ where: { id: t1.id }, data: { status: 'FECHADO', closedAt: new Date() } });
+    await post('Voltou o problema');
+    const all = await prisma.ticket.count({ where: { channel: 'WHATSAPP', contactPhone: phone } });
+    expect(all).toBe(2);
+  });
+
   it('ignora mensagem destinada a outro número da conta Business (não abre chamado)', async () => {
     const phone = '5531977776666';
     const payload = {
