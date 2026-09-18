@@ -144,14 +144,16 @@ describe('Auditoria automática (mutação sem audit explícito)', () => {
   });
 
   it('não duplica auditoria quando a rota já auditou explicitamente', async () => {
-    const before = await prisma.auditLog.count({ where: { entity: 'tickets', action: { startsWith: 'AUTO_' } } });
-    await app.inject({
+    const created = await app.inject({
       method: 'POST', url: '/api/tickets', headers: auth(gestorToken),
       payload: { title: 'Sem duplicar auditoria', description: 'teste dedup', categoryId: fx.categoryId, impact: 'UMA_PESSOA', urgency: 'EXISTE_ALTERNATIVA' },
     });
+    const ticketId = created.json().id as string;
     await new Promise((r) => setTimeout(r, 300));
-    const after = await prisma.auditLog.count({ where: { entity: 'tickets', action: { startsWith: 'AUTO_' } } });
-    expect(after).toBe(before);
+    // Escopado ao chamado criado nesta chamada — testes de outros arquivos rodam em
+    // paralelo e também criam/alteram chamados, então uma contagem global aqui seria instável.
+    const autoLogs = await prisma.auditLog.count({ where: { entity: 'tickets', entityId: ticketId, action: { startsWith: 'AUTO_' } } });
+    expect(autoLogs).toBe(0);
   });
 });
 

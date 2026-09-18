@@ -60,7 +60,7 @@ export default function Configuracoes() {
 function WhatsAppCard() {
   const { data } = useQuery({
     queryKey: ['whatsapp-status'],
-    queryFn: () => api.get<{ configured: boolean; webhookPath: string }>('/api/integrations/whatsapp/status'),
+    queryFn: () => api.get<{ configured: boolean; webhookPath: string; signatureValidationEnabled: boolean }>('/api/integrations/whatsapp/status'),
   });
   return (
     <div className="card mt-5 p-5">
@@ -72,16 +72,25 @@ function WhatsAppCard() {
         </span>
       </div>
       {data?.configured ? (
-        <p className="text-sm text-slate-600">
-          Mensagens recebidas viram chamados (canal WhatsApp); mensagens do mesmo número em até 24h entram no mesmo chamado.
-          Respostas públicas da TI e a resolução são enviadas de volta na conversa — dentro da janela de serviço, sem custo.
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm text-slate-600">
+            Mensagens recebidas viram chamados (canal WhatsApp); mensagens do mesmo número em até 24h entram no mesmo chamado.
+            Respostas públicas da TI e a resolução são enviadas de volta na conversa — dentro da janela de serviço, sem custo.
+          </p>
+          <p className="text-xs text-slate-500">
+            Validação de assinatura do webhook (X-Hub-Signature-256):{' '}
+            <span className={data.signatureValidationEnabled ? 'font-semibold text-emerald-600' : 'font-semibold text-amber-600'}>
+              {data.signatureValidationEnabled ? 'ativa' : 'desativada — defina WHATSAPP_APP_SECRET'}
+            </span>
+          </p>
+        </div>
       ) : (
         <div className="space-y-1.5 text-sm text-slate-600">
           <p>Para ativar, defina no <code className="rounded bg-slate-100 px-1">.env</code> e reinicie a API:</p>
           <pre className="overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs">{`WHATSAPP_TOKEN=            # token permanente do app Meta
 WHATSAPP_PHONE_NUMBER_ID=  # ID do número no WhatsApp Business
-WHATSAPP_VERIFY_TOKEN=     # valor livre, o mesmo usado no painel da Meta`}</pre>
+WHATSAPP_VERIFY_TOKEN=     # valor livre, o mesmo usado no painel da Meta
+WHATSAPP_APP_SECRET=       # Configurações do app → Básico → Chave secreta`}</pre>
           <p>Depois cadastre o webhook no painel da Meta apontando para <code className="rounded bg-slate-100 px-1">{data?.webhookPath ?? '/api/integrations/whatsapp/webhook'}</code> (exige URL pública com HTTPS).</p>
         </div>
       )}

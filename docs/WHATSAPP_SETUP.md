@@ -38,6 +38,10 @@ O token que aparece por padrão na tela de configuração **expira em 24h** — 
 
 Em **WhatsApp → Configuração da API** no painel do app, copie o **Phone number ID** (um número de identificação, diferente do número de telefone em si). É o valor de `WHATSAPP_PHONE_NUMBER_ID`.
 
+### 1.5 Anotar a Chave secreta do app
+
+Em **Configurações do app → Básico**, copie a **Chave secreta do aplicativo**. É o valor de `WHATSAPP_APP_SECRET` — usado para validar que as chamadas ao webhook vêm mesmo da Meta (ver Parte 4).
+
 ---
 
 ## Parte 2 — Expor o webhook (Cloudflare Tunnel)
@@ -105,6 +109,7 @@ Deve responder `teste123`. Se não responder, revise o `ingress` do túnel e se 
 WHATSAPP_TOKEN=<token permanente do usuário do sistema>
 WHATSAPP_PHONE_NUMBER_ID=<phone number id>
 WHATSAPP_VERIFY_TOKEN=<qualquer texto à sua escolha, ex.: gestao-ti-tia-eliana-2026>
+WHATSAPP_APP_SECRET=<chave secreta do app, ver 1.5>
 ```
 Depois:
 ```bash
@@ -136,6 +141,6 @@ Confira em **Configurações** dentro do sistema (menu Administração) se o sta
 - Respostas públicas da equipe e a resolução do chamado são enviadas de volta na conversa.
 - Número já cadastrado como telefone de um usuário do sistema → chamado nasce em nome dessa pessoa; número desconhecido → fica registrado como contato avulso.
 
-## Segurança — pendência conhecida
+## Segurança
 
-O webhook ainda **não valida a assinatura `X-Hub-Signature-256`** enviada pela Meta (ver `docs/SECURITY.md`). Como só o caminho específico do webhook fica exposto (o resto do sistema continua interno) e há limite de requisições, o risco é baixo — mas se a integração ficar em uso por muito tempo, vale implementar essa validação. Avise o Rafael se quiser priorizar isso.
+O webhook valida a assinatura `X-Hub-Signature-256` enviada pela Meta em cada requisição (comparação HMAC-SHA256 com `WHATSAPP_APP_SECRET`, em tempo constante). Chamadas sem assinatura válida são recusadas com 401 e não chegam a processar nada. Sem `WHATSAPP_APP_SECRET` definido, a validação fica desativada — mantenha esse valor preenchido em produção.
