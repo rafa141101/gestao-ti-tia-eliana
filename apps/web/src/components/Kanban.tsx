@@ -27,7 +27,9 @@ export function Kanban<T>({ columns, renderCard, getId, canDrop, onDrop }: Kanba
         return (
           <div
             key={col.key}
-            className={`flex w-72 shrink-0 flex-col rounded-xl border bg-slate-50 ${
+            className={`flex shrink-0 flex-col rounded-xl border bg-slate-50 transition-[width] ${
+              col.items.length === 0 ? 'w-28' : 'w-72'
+            } ${
               overCol === col.key ? (droppable ? 'border-brand-400 bg-brand-50' : 'border-red-300 bg-red-50') : 'border-slate-200'
             }`}
             onDragOver={(e) => {
@@ -41,10 +43,17 @@ export function Kanban<T>({ columns, renderCard, getId, canDrop, onDrop }: Kanba
               setOverCol(null);
             }}
           >
-            <div className="flex items-center justify-between px-3 py-2.5">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{col.title}</p>
-              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">{col.items.length}</span>
-            </div>
+            {col.items.length === 0 ? (
+              <div className="flex flex-col items-center gap-1 px-1.5 py-2.5 text-center">
+                <p className="text-[11px] font-bold uppercase leading-tight tracking-wide text-slate-500">{col.title}</p>
+                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">{col.items.length}</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{col.title}</p>
+                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">{col.items.length}</span>
+              </div>
+            )}
             <div className="flex min-h-24 flex-col gap-2 px-2 pb-2">
               {col.items.map((item) => (
                 <div
