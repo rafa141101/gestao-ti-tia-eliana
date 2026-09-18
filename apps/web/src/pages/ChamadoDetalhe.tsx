@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Play, Download, Lock, Star } from 'lucide-react';
+import { Paperclip, Play, Square, Download, Lock, Star } from 'lucide-react';
 import { api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtDateTime, fmtMinutes, fmtRelative, slaState } from '../lib/format';
@@ -37,6 +37,16 @@ export default function ChamadoDetalhe() {
   const [manualModal, setManualModal] = useState(false);
   const [reopenModal, setReopenModal] = useState(false);
   const [rateValue, setRateValue] = useState(0);
+  const [stopModal, setStopModal] = useState(false);
+  const [stopResult, setStopResult] = useState('');
+  const [stopNextStep, setStopNextStep] = useState('');
+
+  const { data: running } = useQuery({
+    queryKey: ['running-worklog'],
+    queryFn: () => api.get<{ id: string; ticket?: { id: string } | null } | null>('/api/worklogs/running'),
+    enabled: can('tickets.work'),
+  });
+  const runningHere = running?.ticket?.id === id;
 
   const { data: users } = useQuery({
     queryKey: ['user-options'],
@@ -69,6 +79,10 @@ export default function ChamadoDetalhe() {
   const startWork = useMutation({
     mutationFn: () => api.post('/api/worklogs/start', { ticketId: id, type: 'ATENDIMENTO_REMOTO' }),
     onSuccess: invalidate,
+  });
+  const stopWork = useMutation({
+    mutationFn: () => api.post(`/api/worklogs/${running?.id}/stop`, { result: stopResult, nextStep: stopNextStep }),
+    onSuccess: () => { setStopModal(false); setStopResult(''); setStopNextStep(''); invalidate(); },
   });
   const confirmResolution = useMutation({
     mutationFn: () => api.post(`/api/tickets/${id}/confirm-resolution`),
@@ -130,9 +144,15 @@ export default function ChamadoDetalhe() {
         actions={
           <>
             {isTech && t.status !== 'FECHADO' && t.status !== 'CANCELADO' && (
-              <button className="btn-primary" onClick={() => startWork.mutate()} disabled={startWork.isPending}>
-                <Play className="h-4 w-4" /> Iniciar atendimento
-              </button>
+              runningHere ? (
+                <button className="btn-secondary" onClick={() => setStopModal(true)}>
+                  <Square className="h-4 w-4" /> Finalizar atendimento
+                </button>
+              ) : (
+                <button className="btn-primary" onClick={() => startWork.mutate()} disabled={startWork.isPending || !!running}>
+                  <Play className="h-4 w-4" /> Iniciar atendimento
+                </button>
+              )
             )}
             {isRequester && t.status === 'RESOLVIDO' && (
               <>
@@ -146,7 +166,10 @@ export default function ChamadoDetalhe() {
           </>
         }
       />
-      <ErrorText error={startWork.error ?? changeStatus.error ?? confirmResolution.error} />
+      <ErrorText error={startWork.error ?? stopWork.error ?? changeStatus.error ?? confirmResolution.error} />
+      {isTech && running && !runningHere && t.status !== 'FECHADO' && t.status !== 'CANCELADO' && (
+        <p className="mb-3 text-xs text-amber-600">Você já tem um apontamento em andamento em outro item — finalize-o em Meu Trabalho antes de iniciar este.</p>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* Coluna principal */}
@@ -441,6 +464,24 @@ export default function ChamadoDetalhe() {
       {reopenModal && (
         <Modal title="Reabrir chamado" onClose={() => setReopenModal(false)}>
           <ReopenForm onSubmit={(reason) => reopen.mutate(reason)} error={reopen.error} busy={reopen.isPending} />
+        </Modal>
+      )}
+
+      {stopModal && (
+        <Modal title="Finalizar atendimento" onClose={() => setStopModal(false)}>
+          <div className="space-y-3">
+            <Field label="O que foi feito / resultado">
+              <textarea className="input" rows={3} value={stopResult} onChange={(e) => setStopResult(e.target.value)} placeholder="Ex.: sensor limpo, teste de impressão OK" />
+            </Field>
+            <Field label="Próximo passo (se houver)">
+              <input className="input" value={stopNextStep} onChange={(e) => setStopNextStep(e.target.value)} placeholder="Ex.: devolver impressora para a expedição" />
+            </Field>
+            <ErrorText error={stopWork.error} />
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => setStopModal(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={() => stopWork.mutate()} disabled={stopWork.isPending}>Finalizar</button>
+            </div>
+          </div>
         </Modal>
       )}
 
