@@ -17,9 +17,6 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(8, 'A nova senha deve ter no mínimo 8 caracteres'),
 });
 
-const MAX_FAILED = 5;
-const LOCK_MINUTES = 15;
-
 export async function authRoutes(app: FastifyInstance) {
   app.post('/login', {
     config: { rateLimit: { max: env.nodeEnv === 'test' ? 1000 : 10, timeWindow: '1 minute' } },
@@ -32,28 +29,15 @@ export async function authRoutes(app: FastifyInstance) {
       throw new AppError('E-mail ou senha incorretos.', 401);
     }
 
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      await audit({ userId: user.id, action: 'LOGIN_FAIL', entity: 'auth', entityId: user.id, req, after: { reason: 'bloqueado' } });
-      throw new AppError(`Conta temporariamente bloqueada por tentativas incorretas. Tente novamente mais tarde.`, 423);
-    }
-
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      const failed = user.failedLogins + 1;
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLogins: failed,
-          lockedUntil: failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
-        },
-      });
-      await audit({ userId: user.id, action: 'LOGIN_FAIL', entity: 'auth', entityId: user.id, req, after: { tentativas: failed } });
+      await audit({ userId: user.id, action: 'LOGIN_FAIL', entity: 'auth', entityId: user.id, req });
       throw new AppError('E-mail ou senha incorretos.', 401);
     }
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date() },
     });
     await audit({ userId: user.id, action: 'LOGIN', entity: 'auth', entityId: user.id, req });
 

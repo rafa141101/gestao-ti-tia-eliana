@@ -42,7 +42,7 @@ erDiagram
 - **organizations** — empresa(s). MVP usa uma (Tia Eliana).
 - **units** — Escritório, Indústria, Lojas, Logística…
 - **departments** — setores (TI, Comercial, Televendas, Expedição, Fiscal…).
-- **users** — perfil único (`role`), `isProtected` para Owner, lockout de login (`failedLogins`, `lockedUntil`). Nunca apagados (soft delete `active`).
+- **users** — perfil único (`role`), `isProtected` para Owner. Nunca apagados (soft delete `active`). Colunas `failedLogins`/`lockedUntil` seguem no schema mas não bloqueiam mais login (decisão do Owner) — só o rate-limit por IP no `/api/auth/login` (10/min) segue ativo.
 - **queues** — filas de atendimento (Suporte N1, Desenvolvimento, Infraestrutura).
 
 ### Atendimento

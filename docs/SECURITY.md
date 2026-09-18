@@ -4,7 +4,7 @@
 
 | Área | Controle |
 | --- | --- |
-| Senhas | bcrypt (custo 10); mínimo 8 caracteres; bloqueio de 15 min após 5 falhas |
+| Senhas | bcrypt (custo 10); mínimo 8 caracteres |
 | Sessões | JWT com expiração de 8h; segredo obrigatório via `.env`; API recusa subir em produção com segredo de desenvolvimento |
 | Força bruta / abuso | Rate-limit global 300 req/min por IP; login 10/min; página pública de QR com limite próprio |
 | Autorização | Matriz de permissões aplicada no servidor em todas as rotas + regras de escopo (solicitante só vê os próprios chamados; anexos respeitam a visibilidade do chamado) |
@@ -25,7 +25,7 @@ O sistema foi desenhado para rodar **na rede interna**, sem exposição à inter
 A ativação do WhatsApp exige uma URL pública com HTTPS. Recomendações:
 
 1. **Exponha apenas o caminho do webhook** (`/api/integrations/whatsapp/webhook`) através de túnel/proxy reverso (Cloudflare Tunnel, nginx com TLS) — não a aplicação inteira.
-2. **Pendência conhecida:** o webhook ainda não valida a assinatura `X-Hub-Signature-256` da Meta (exige captura do corpo bruto). Até implementar, o risco é limitado a criação de chamados falsos por quem descobrir a URL — mitigado pelo rate-limit e pela URL não adivinhável do túnel. Implementar validação com `WHATSAPP_APP_SECRET` antes de uso prolongado.
+2. O webhook valida a assinatura `X-Hub-Signature-256` da Meta (HMAC-SHA256 do corpo bruto com `WHATSAPP_APP_SECRET`, comparação em tempo constante) — requisições sem assinatura válida são recusadas com 401 antes de processar qualquer coisa.
 3. Use HTTPS obrigatório e mantenha o restante da aplicação acessível apenas na rede interna/VPN.
 
 ## Decisões registradas
@@ -33,6 +33,7 @@ A ativação do WhatsApp exige uma URL pública com HTTPS. Recomendações:
 - **Cofre de senhas de equipamentos: fora do MVP.** Não armazene senhas nos campos livres/`specs` dos ativos. Módulo futuro com criptografia dedicada, acesso restrito e trilha de visualização.
 - E-mail de recuperação de senha não existe (sem dependência de SMTP): a recuperação é administrativa (outro Owner) — procedimento no [owner-manual.md](owner-manual.md).
 - `npm audit` deve ser rodado a cada atualização de dependências.
+- **Bloqueio de conta após tentativas de login removido (decisão do Owner, 2026-09-18):** só resta o rate-limit por IP no `/api/auth/login` (10/min) como proteção contra força bruta. Motivo: o próprio Owner ficou bloqueado da própria conta e preferiu simplicidade a essa camada extra. Colunas `failedLogins`/`lockedUntil` seguem no schema (não removidas), só não são mais usadas para bloquear.
 
 ## Resposta a incidentes
 
