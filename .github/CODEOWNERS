@@ -1,0 +1,15 @@
+# Áreas que mexem em auditoria, apontamento de tempo, SLA ou proteção do banco
+# exigem revisão do Rafael, além da aprovação normal de PR — mesmo que outras
+# pessoas ganhem permissão de aprovar PRs no futuro.
+
+/apps/api/src/lib/audit.ts        @rafa141101
+/apps/api/src/lib/context.ts      @rafa141101
+/apps/api/src/db.ts               @rafa141101
+/apps/api/src/routes/worklogs.ts  @rafa141101
+/apps/api/src/lib/sla.ts          @rafa141101
+/apps/api/prisma/schema.prisma    @rafa141101
+/apps/api/prisma/migrations/      @rafa141101
+/docker-compose.production.yml    @rafa141101
+/.env.production.example          @rafa141101
+/docs/SECURITY.md                 @rafa141101
+/.github/                         @rafa141101
