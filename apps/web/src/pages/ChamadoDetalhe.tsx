@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Play, Square, Download, Lock, Star } from 'lucide-react';
-import { api, downloadFile } from '../lib/api';
+import { Paperclip, Play, Square, Lock, Star } from 'lucide-react';
+import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtDateTime, fmtMinutes, fmtRelative, slaState } from '../lib/format';
 import { PageHeader, Spinner, ErrorText, TicketStatusBadge, PriorityBadge, SlaBadge, Modal, Field, EmptyState } from '../components/ui';
+import { AttachmentList } from '../components/AttachmentPreview';
 import {
   TICKET_STATUS_LABELS, TICKET_STATUS_TRANSITIONS, TICKET_EVENT_LABELS, PRIORITIES, PRIORITY_LABELS,
   IMPACT_LABELS, URGENCY_LABELS, CHANNEL_LABELS, WORKLOG_TYPE_LABELS, WORKLOG_TYPES,
@@ -182,6 +183,12 @@ export default function ChamadoDetalhe() {
         <div className="space-y-5 lg:col-span-2">
           <div className="card p-4">
             <p className="whitespace-pre-wrap text-sm text-slate-700">{t.description}</p>
+            {t.attachments?.length > 0 && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <p className="text-xs font-bold uppercase text-slate-500">Anexos ({t.attachments.length})</p>
+                <AttachmentList attachments={t.attachments} />
+              </div>
+            )}
             {t.formResponses && (
               <div className="mt-3 grid gap-1.5 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">
                 {Object.entries(t.formResponses as Record<string, unknown>).map(([k, v]) => {
@@ -222,11 +229,7 @@ export default function ChamadoDetalhe() {
                       <span>{fmtDateTime(item.at)}</span>
                     </div>
                     <p className="whitespace-pre-wrap text-sm text-slate-700">{item.data.body}</p>
-                    {item.data.attachments?.map((a: any) => (
-                      <button key={a.id} className="mt-1 flex items-center gap-1 text-xs text-brand-600 hover:underline" onClick={() => downloadFile(`/api/attachments/${a.id}/download`, a.filename)}>
-                        <Paperclip className="h-3 w-3" />{a.filename}
-                      </button>
-                    ))}
+                    <AttachmentList attachments={item.data.attachments} />
                   </div>
                 ) : (
                   <div key={`e${i}`} className="flex items-center gap-2 pl-1 text-xs text-slate-500">

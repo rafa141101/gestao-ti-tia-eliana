@@ -7,6 +7,9 @@ import { generatePublicId } from '../lib/numbers.js';
 import { addSlaMinutes, slaMinutesFor } from '../lib/sla.js';
 import { computePriority, type Urgency } from '@gestao-ti/shared';
 import bcrypt from 'bcryptjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
 
 /**
  * Integração com a API oficial do WhatsApp (Meta Cloud API).
@@ -83,6 +86,96 @@ export async function sendWhatsAppText(to: string | null | undefined, body: stri
   }
 }
 
+// ---------- Mídia recebida (fotos, áudios, vídeos, documentos) ----------
+
+export type IncomingMediaKind = 'image' | 'audio' | 'video' | 'document' | 'sticker';
+
+export interface IncomingMedia {
+  kind: IncomingMediaKind;
+  /** id da mídia na Meta — o arquivo precisa ser baixado em seguida (a URL expira em minutos) */
+  id: string;
+  mimeType?: string;
+  filename?: string;
+  /** áudio gravado no próprio WhatsApp (mensagem de voz) */
+  voice?: boolean;
+}
+
+const MEDIA_LABELS: Record<IncomingMediaKind, string> = {
+  image: 'Foto', audio: 'Áudio', video: 'Vídeo', document: 'Documento', sticker: 'Figurinha',
+};
+
+function mediaLabel(media: IncomingMedia): string {
+  if (media.kind === 'audio' && media.voice) return 'Mensagem de voz';
+  if (media.kind === 'document' && media.filename) return `Documento: ${media.filename}`;
+  return MEDIA_LABELS[media.kind];
+}
+
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif',
+  'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'audio/amr': '.amr',
+  'video/mp4': '.mp4', 'video/3gpp': '.3gp',
+  'application/pdf': '.pdf',
+};
+
+function stamp(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/**
+ * Baixa a mídia da Meta e grava em UPLOAD_DIR, criando um anexo ainda sem
+ * vínculo (quem chama liga ao chamado/comentário). Fluxo da Cloud API:
+ * GET /{media-id} devolve uma URL temporária, que também exige o token.
+ * Nunca lança — retorna null se não deu para baixar (integração inativa,
+ * arquivo grande demais, erro de rede).
+ */
+async function saveIncomingMedia(media: IncomingMedia, uploaderId: string): Promise<string | null> {
+  if (!whatsappConfigured()) return null;
+  const headers = { Authorization: `Bearer ${env.whatsappToken}` };
+  try {
+    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(media.id)}`, { headers });
+    if (!metaRes.ok) {
+      console.error('[whatsapp] consulta da mídia falhou:', metaRes.status, await metaRes.text());
+      return null;
+    }
+    const meta = (await metaRes.json()) as { url?: string; mime_type?: string; file_size?: number };
+    if (!meta.url) return null;
+    if (meta.file_size && meta.file_size > env.whatsappMediaMaxBytes) {
+      console.error(`[whatsapp] mídia ${media.id} ignorada: ${meta.file_size} bytes acima do limite`);
+      return null;
+    }
+
+    const fileRes = await fetch(meta.url, { headers });
+    if (!fileRes.ok) {
+      console.error('[whatsapp] download da mídia falhou:', fileRes.status);
+      return null;
+    }
+    const data = Buffer.from(await fileRes.arrayBuffer());
+    if (data.length > env.whatsappMediaMaxBytes) {
+      console.error(`[whatsapp] mídia ${media.id} ignorada: ${data.length} bytes acima do limite`);
+      return null;
+    }
+
+    // "audio/ogg; codecs=opus" → "audio/ogg"
+    const mimeType = (meta.mime_type ?? media.mimeType ?? 'application/octet-stream').split(';')[0].trim().toLowerCase();
+    const original = media.filename ? path.basename(media.filename).slice(0, 200) : '';
+    const ext = (original ? path.extname(original) : EXT_BY_MIME[mimeType] ?? '').slice(0, 10);
+    const filename = original || `whatsapp-${MEDIA_LABELS[media.kind].toLowerCase()}-${stamp(new Date())}${ext}`;
+    const storedName = `${crypto.randomUUID()}${ext}`;
+
+    fs.mkdirSync(env.uploadDir, { recursive: true });
+    fs.writeFileSync(path.join(env.uploadDir, storedName), data);
+
+    const att = await prisma.attachment.create({
+      data: { filename, storedName, mimeType, size: data.length, uploadedById: uploaderId },
+    });
+    return att.id;
+  } catch (err) {
+    console.error('[whatsapp] erro ao baixar mídia:', err);
+    return null;
+  }
+}
+
 async function whatsappSystemUser() {
   const existing = await prisma.user.findFirst({ where: { email: 'whatsapp@gestao-ti.local' } });
   if (existing) return existing;
@@ -139,10 +232,12 @@ interface NewTicketInput {
   profileName?: string;
   messageText: string;
   category: { id: string; defaultQueueId: string | null };
+  /** anexos já baixados (sem vínculo) que passam a pertencer ao chamado */
+  attachmentIds?: string[];
 }
 
 /** Cria o chamado a partir de uma mensagem já triada (categoria já decidida). */
-async function createTicketFromWhatsApp({ phone, matched, profileName, messageText, category }: NewTicketInput) {
+async function createTicketFromWhatsApp({ phone, matched, profileName, messageText, category, attachmentIds = [] }: NewTicketInput) {
   const requester = matched ?? (await whatsappSystemUser());
   const impact = 'UMA_PESSOA' as const;
   const urgency = urgencyFor(messageText);
@@ -178,6 +273,9 @@ async function createTicketFromWhatsApp({ phone, matched, profileName, messageTe
     await tx.ticketEvent.create({
       data: { ticketId: t.id, type: 'CRIACAO', toValue: 'NOVO', comment: `Recebido pelo WhatsApp (${phone})` },
     });
+    if (attachmentIds.length) {
+      await tx.attachment.updateMany({ where: { id: { in: attachmentIds } }, data: { ticketId: t.id } });
+    }
     return t;
   });
 
@@ -203,9 +301,14 @@ async function createTicketFromWhatsApp({ phone, matched, profileName, messageTe
  * chamado; sem categoria configurada nenhuma, mantém o comportamento antigo
  * (categoria padrão direto).
  */
-export async function processIncomingWhatsApp(from: string, text: string, profileName?: string): Promise<void> {
+export async function processIncomingWhatsApp(
+  from: string,
+  caption: string,
+  profileName?: string,
+  media?: IncomingMedia,
+): Promise<void> {
   const phone = digitsOf(from);
-  if (!phone || !text.trim()) return;
+  if (!phone || (!caption.trim() && !media)) return;
 
   // Usuário cadastrado com este telefone?
   const candidates = await prisma.user.findMany({
@@ -213,6 +316,20 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
     select: { id: true, name: true, phone: true, unitId: true, departmentId: true },
   });
   const matched = candidates.find((u) => samePhone(u.phone!, phone));
+
+  // Mídia: baixa já (a URL da Meta expira) e descreve no texto, para o técnico saber o que
+  // chegou mesmo se o download falhar. A legenda, quando houver, vale como texto da mensagem.
+  const attachmentIds: string[] = [];
+  let text = caption.trim();
+  if (media) {
+    const uploader = matched ?? (await whatsappSystemUser());
+    const attachmentId = await saveIncomingMedia(media, uploader.id);
+    if (attachmentId) attachmentIds.push(attachmentId);
+    const tag = attachmentId
+      ? `[${mediaLabel(media)}]`
+      : `[${mediaLabel(media)} — não foi possível baixar o arquivo; peça para reenviar]`;
+    text = text ? `${tag}\n${text}` : tag;
+  }
 
   // Conversa em andamento (mesma janela de 24h)?
   const windowStart = new Date(Date.now() - 24 * 3600_000);
@@ -231,7 +348,7 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
 
   if (openTicket) {
     const author = matched ?? (await whatsappSystemUser());
-    await prisma.ticketComment.create({
+    const comment = await prisma.ticketComment.create({
       data: {
         ticketId: openTicket.id,
         authorId: author.id,
@@ -239,6 +356,12 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
         isInternal: false,
       },
     });
+    if (attachmentIds.length) {
+      await prisma.attachment.updateMany({
+        where: { id: { in: attachmentIds } },
+        data: { ticketId: openTicket.id, commentId: comment.id },
+      });
+    }
     // Cliente respondeu num chamado já resolvido: o problema voltou — reabre (a mensagem de
     // resolução enviada a ele promete exatamente isso).
     if (openTicket.status === 'RESOLVIDO') {
@@ -266,6 +389,23 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
 
   // Resposta a um menu de triagem pendente?
   const pending = await prisma.whatsAppPendingTriage.findUnique({ where: { phone } });
+  // Arquivo enviado enquanto o menu espera resposta: guarda junto e lembra de escolher o assunto
+  // (não dá para tratar foto/áudio como "resposta inválida" e abrir na categoria padrão).
+  if (pending && media) {
+    const options = pending.options as unknown as MenuOption[];
+    await prisma.whatsAppPendingTriage.update({
+      where: { phone },
+      data: {
+        firstMessage: `${pending.firstMessage}\n${text}`,
+        attachmentIds: [...pending.attachmentIds, ...attachmentIds],
+      },
+    });
+    await sendWhatsAppText(
+      phone,
+      `Recebemos o arquivo. Para concluir a abertura do chamado, responda só com o número do assunto:\n\n${options.map((o) => `${o.n}) ${o.label}`).join('\n')}`,
+    );
+    return;
+  }
   if (pending) {
     await prisma.whatsAppPendingTriage.delete({ where: { phone } });
     const options = pending.options as unknown as MenuOption[];
@@ -283,15 +423,16 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
       phone, matched, profileName,
       messageText: pending.firstMessage,
       category: finalCategory,
+      attachmentIds: pending.attachmentIds,
     });
     return;
   }
 
   // Chamado novo — tenta triagem automática por palavra-chave.
   const triageCategories = await categoriesForTriage();
-  const keywordMatch = matchCategoryByKeyword(text, triageCategories);
+  const keywordMatch = matchCategoryByKeyword(caption, triageCategories);
   if (keywordMatch) {
-    await createTicketFromWhatsApp({ phone, matched, profileName, messageText: text, category: keywordMatch });
+    await createTicketFromWhatsApp({ phone, matched, profileName, messageText: text, category: keywordMatch, attachmentIds });
     return;
   }
 
@@ -299,7 +440,7 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
   if (triageCategories.length > 0) {
     const menu = buildMenu(triageCategories);
     await prisma.whatsAppPendingTriage.create({
-      data: { phone, firstMessage: text, profileName, options: menu.options as unknown as object },
+      data: { phone, firstMessage: text, profileName, options: menu.options as unknown as object, attachmentIds },
     });
     await sendWhatsAppText(phone, menu.text);
     return;
@@ -311,5 +452,5 @@ export async function processIncomingWhatsApp(from: string, text: string, profil
     console.error('[whatsapp] nenhuma categoria ativa para abrir chamado');
     return;
   }
-  await createTicketFromWhatsApp({ phone, matched, profileName, messageText: text, category });
+  await createTicketFromWhatsApp({ phone, matched, profileName, messageText: text, category, attachmentIds });
 }

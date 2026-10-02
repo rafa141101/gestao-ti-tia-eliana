@@ -21,6 +21,8 @@ export const env = {
   whatsappPhoneId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? '',
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? 'gestao-ti-verify',
   whatsappAppSecret: process.env.WHATSAPP_APP_SECRET ?? '',
+  // Mídia recebida pelo WhatsApp (vídeo chega a 16 MB, documento a 100 MB) — acima disso só registra o aviso
+  whatsappMediaMaxBytes: Number(process.env.WHATSAPP_MEDIA_MAX_MB ?? 25) * 1024 * 1024,
   // Agente de inventário — sem token definido, a coleta automática fica desligada
   agentToken: process.env.AGENT_TOKEN ?? '',
 };

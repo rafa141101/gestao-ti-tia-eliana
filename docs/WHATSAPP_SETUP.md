@@ -140,6 +140,10 @@ Confira em **Configurações** dentro do sistema (menu Administração) se o sta
 - Mensagem do mesmo número dentro de 24h de um chamado WhatsApp em aberto → vira resposta no **mesmo** chamado (não duplica).
 - Respostas públicas da equipe e a resolução do chamado são enviadas de volta na conversa.
 - Número já cadastrado como telefone de um usuário do sistema → chamado nasce em nome dessa pessoa; número desconhecido → fica registrado como contato avulso.
+- **Fotos, áudios (inclusive mensagens de voz), vídeos, documentos e figurinhas** são baixados da Meta na hora (a URL deles expira em minutos) e anexados ao chamado ou à resposta. A legenda vira o texto da mensagem e também vale para a triagem por palavra-chave. Na tela do chamado: foto em miniatura (clique amplia), áudio e vídeo com player, PDF abre em outra aba; outros tipos ficam só para download.
+- Arquivo acima de `WHATSAPP_MEDIA_MAX_MB` (padrão 25 MB) ou que falhou ao baixar não é perdido em silêncio: a mensagem entra com o aviso “não foi possível baixar o arquivo; peça para reenviar”.
+- Arquivo enviado enquanto o menu de triagem espera a escolha do assunto fica guardado e vai para o chamado quando ele for aberto; o contato recebe de novo as opções do menu.
+- Localização, contato compartilhado e reações ainda são ignorados.
 
 ## Segurança
 

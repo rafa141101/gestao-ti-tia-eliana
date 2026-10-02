@@ -403,6 +403,8 @@ model WhatsAppPendingTriage {
   profileName  String?
   /// [{ n: number, categoryId: string, label: string }]
   options      Json
+  /// Anexos (fotos/áudios/documentos) recebidos antes da escolha do menu — vinculados ao chamado quando ele nascer
+  attachmentIds String[] @default([])
   createdAt    DateTime @default(now())
 
   @@map("whatsapp_pending_triage")

@@ -8,6 +8,7 @@ import { env } from '../env.js';
 import { audit } from '../lib/audit.js';
 import { AppError } from '../lib/errors.js';
 import { ticketScopeFor } from './tickets.js';
+import { hasPermission } from '@gestao-ti/shared';
 
 const ALLOWED_MIME = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -72,15 +73,28 @@ export async function attachmentRoutes(app: FastifyInstance) {
     const att = await prisma.attachment.findUnique({ where: { id } });
     if (!att) throw new AppError('Anexo não encontrado.', 404);
 
-    // Anexos de chamados respeitam a visibilidade do chamado
-    if (att.ticketId) {
-      const ok = await prisma.ticket.findFirst({ where: { AND: [{ id: att.ticketId }, ticketScopeFor(req.authUser)] }, select: { id: true } });
+    const u = req.authUser;
+    const isTech = hasPermission(u.role, 'tickets.work') || hasPermission(u.role, 'audit.view');
+
+    // Anexos de chamados (direto ou via comentário) respeitam a visibilidade do chamado;
+    // anexo de comentário interno só para a TI, como o próprio comentário.
+    const comment = att.commentId
+      ? await prisma.ticketComment.findUnique({ where: { id: att.commentId }, select: { ticketId: true, isInternal: true } })
+      : null;
+    const ticketId = att.ticketId ?? comment?.ticketId;
+    if (ticketId) {
+      const ok = await prisma.ticket.findFirst({ where: { AND: [{ id: ticketId }, ticketScopeFor(u)] }, select: { id: true } });
       if (!ok) throw new AppError('Sem acesso a este anexo.', 403);
     }
+    if (comment?.isInternal && !isTech) throw new AppError('Sem acesso a este anexo.', 403);
+    // Sem vínculo nenhum = mídia do WhatsApp aguardando a escolha do menu — só a TI enxerga
+    if (!PARENT_FIELDS.some((f) => att[f]) && !isTech) throw new AppError('Sem acesso a este anexo.', 403);
 
     const filePath = path.join(env.uploadDir, att.storedName);
     if (!fs.existsSync(filePath)) throw new AppError('Arquivo não encontrado no armazenamento.', 404);
 
+    // Arquivos vindos de fora (WhatsApp) podem ter qualquer tipo: nunca deixar o navegador "adivinhar"
+    reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Content-Type', att.mimeType);
     reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
     return reply.send(fs.createReadStream(filePath));
