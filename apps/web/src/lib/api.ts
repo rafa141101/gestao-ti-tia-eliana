@@ -53,6 +53,14 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
+/** Busca um arquivo autenticado como Blob (pré-visualização de anexos). */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const token = getToken();
+  const res = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) throw new ApiError('Falha ao carregar arquivo', res.status);
+  return res.blob();
+}
+
 /** Baixa um arquivo autenticado (exportações e anexos). */
 export async function downloadFile(path: string, filename?: string): Promise<void> {
   const token = getToken();
